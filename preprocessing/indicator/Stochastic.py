@@ -1,0 +1,4 @@
+
+
+def Stochastic():
+    pass
