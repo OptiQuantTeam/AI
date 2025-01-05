@@ -28,3 +28,4 @@ for epoch in range(100):
     outputs = model(inputs)  # 모델의 예측 값 계산
     loss = loss_function(outputs, labels)
     
+
