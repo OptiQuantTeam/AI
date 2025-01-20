@@ -50,15 +50,16 @@ def get_klines(symbol, interval, start_time=None, end_time=None, limit=None):
 #23년 6월 1일 오전 9시의 타임스탬프
 #timestamp = 1732792920000
 if __name__ == '__main__':
-    year = 2017
+    year = 2018
 
-    while year < 2024:
-        date_string = str(year)+'-01-01 00:00:00'
-        timestamp = int(time.mktime(datetime.strptime(date_string, '%Y-%m-%d %H:%M:%S').timetuple())*1000)
-        date_string2 = str(year)+'-12-31 23:59:00'
-        timestamp2 = int(time.mktime(datetime.strptime(date_string2, '%Y-%m-%d %H:%M:%S').timetuple())*1000)
-        #current = math.trunc(int((time.time()/100))*100000)
+    #while year < 2024:
+    date_string = str(year)+'-01-04 04:00:00'
+    timestamp = int(time.mktime(datetime.strptime(date_string, '%Y-%m-%d %H:%M:%S').timetuple())*1000)
+    date_string2 = str(year)+'-01-04 05:00:00'
+    timestamp2 = int(time.mktime(datetime.strptime(date_string2, '%Y-%m-%d %H:%M:%S').timetuple())*1000)
+    #current = math.trunc(int((time.time()/100))*100000)
 
-        df =  get_klines("BTCUSDT", "15m", start_time=timestamp, end_time=timestamp2, limit=1000)
-        df.to_csv("./BTCUSDT-15m-"+str(year)+".csv")
-        year+=1
+    df =  get_klines("BTCUSDT", "1m", start_time=timestamp, end_time=timestamp2, limit=1000)
+    print(df)
+    #df.to_csv("./BTCUSDT-15m-"+str(year)+".csv")
+    year+=1
