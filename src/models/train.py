@@ -2,6 +2,11 @@ import torch
 import torch.optim as optim
 from sklearn.metrics import accuracy_score
 
+# 모델 불러오기(존재하면 추가 학습, 없다면 새로 학습)
+# 데이터 불러오기
+# 학습하기
+# 모델 저장하기
+
 def train(model, train_loader, val_loader, num_epochs, learning_rate, device):
     """
     LSTM 모델 학습 함수

@@ -1,4 +1,6 @@
 
+# 입력 데이터에 대한 JSON 형태로 출력을 반환
+
 def predict(model, pred_loader, device):
     """
     실시간 예측 함수
