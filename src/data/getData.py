@@ -41,15 +41,22 @@ def getCurrentData(symbol, interval='1m', limit=None):
     value = res.json()
 
     df = pd.DataFrame(value, columns=columns)
-        
-        
+    
+    df['Open'] = df['Open'].astype('float')
+    df['High'] = df['High'].astype('float')
+    df['Low'] = df['Low'].astype('float')
+    df['Close'] = df['Close'].astype('float')
+
+    df['RSI'] = RSI(df)
+    df['EMAF'] = EMA(df, window=10)
 
     df['Open time'] = df['Open time'].astype('int')
     df['Open time'] = df['Open time'].apply(lambda x : datetime.fromtimestamp(x/1000))
     df['Close time'] = df['Close time'].astype('int')
     df['Close time'] = df['Close time'].apply(lambda x : datetime.fromtimestamp(x/1000))
     df = df.set_index('Open time')
-    return df
+    #print(df)
+    return df[['Open','High','Low','Close','RSI','EMAF']]
 
 #timestamp = 1685577600000
 #23년 6월 1일 오전 9시의 타임스탬프
