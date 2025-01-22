@@ -1,10 +1,8 @@
 import torch
-import torch.nn as nn
-import torch.optim as optim
 from torch.utils.data import DataLoader
 
-from models.ML import LSTM, train, predict, LSTMDataset, create_targets
-from data import getTrainData, getCurrentData
+from models.ML import LSTM, test, LSTMDataset, create_targets
+from data import getTrainData
 
 # Target을 계산하기 위한 파라미터 설정
 threshold_up = 0.02  # 매수 기준 상승률 (2%)
@@ -30,4 +28,4 @@ new_data = create_targets(new_data, threshold_up, threshold_down, future_window)
 pred_dataset = LSTMDataset(new_data, sequence_length)
 pred_loader = DataLoader(pred_dataset, batch_size=batch_size, shuffle=True)
 
-predict(model, pred_loader, device)
+test(model, pred_loader, device)
