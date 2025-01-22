@@ -1,4 +1,4 @@
-from RSI import RSI
+from .RSI import RSI
 import pandas as pd
 
 def StochasticRSI(data, rsi_window=14, stoch_window=14):
