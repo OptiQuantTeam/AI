@@ -23,7 +23,7 @@ def RSI(data, window=14):
 # 예제 데이터 사용
 if __name__ == "__main__":
     # 종가 데이터 생성
-    data = pd.read_csv('/workspace/BTCUSDT/BTCUSDT-1d-2018.csv', index_col=0)
+    data = pd.read_csv('/workspace/data/raw/BTCUSDT/BTCUSDT-1h-2023.csv', index_col=0)
     # RSI 계산
     rsi_values = RSI(data)
     print(rsi_values)
