@@ -136,3 +136,4 @@ def predict(model, input_data, device):
     
     print("실시간 예측 결과:", ["매수", "매도", "대기"][predicted.item()])
     #print("실제 결과 : ", new_data['Target'])
+    return predicted.item()

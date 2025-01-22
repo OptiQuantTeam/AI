@@ -18,4 +18,4 @@ model.load_state_dict(torch.load('LSTM-20250122.pt'))
 new_data = getCurrentData("BTCUSDT", "1h", limit=12)
 
 
-predict(model, new_data, device)
+side = predict(model, new_data, device)
