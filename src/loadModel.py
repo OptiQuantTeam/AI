@@ -1,7 +1,7 @@
 import torch
 from torch.utils.data import DataLoader
 
-from models.ML import LSTM, test, LSTMDataset, create_targets
+from models.ML import LSTM, train, LSTMDataset, create_targets
 from data import getTrainData
 
 # Target을 계산하기 위한 파라미터 설정
@@ -16,16 +16,30 @@ input_size = 6  # 예: OHLCV + RSI + MACD + EMA
 hidden_size = 64
 num_layers = 2
 output_size = 3  # 매수, 매도, 대기
+epochs = 100
+learning_rate = 0.001
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 model = LSTM(input_size=input_size, hidden_size=hidden_size, num_layers=num_layers, output_size=output_size)
 model.load_state_dict(torch.load('LSTM-20250122.pt'))
+model.train()
 
 new_data = getTrainData(ticker='BTCUSDT', startYear=2023, interval='1h', raw=True)
 new_data = create_targets(new_data, threshold_up, threshold_down, future_window)
 
-pred_dataset = LSTMDataset(new_data, sequence_length)
-pred_loader = DataLoader(pred_dataset, batch_size=batch_size, shuffle=True)
+train_size = int(0.8 * len(new_data))
+train_df = new_data[:train_size]
+val_df = new_data[train_size:]
 
-test(model, pred_loader, device)
+
+train_dataset = LSTMDataset(train_df, sequence_length)
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+
+
+val_dataset = LSTMDataset(val_df, sequence_length)
+val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True)
+
+
+
+train(model, train_loader, val_loader, epochs, learning_rate, device)

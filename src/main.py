@@ -19,3 +19,4 @@ new_data = getCurrentData("BTCUSDT", "1h", limit=12)
 
 
 side = predict(model, new_data, device)
+print(side)
