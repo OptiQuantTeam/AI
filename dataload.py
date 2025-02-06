@@ -1,6 +1,12 @@
 from binance.client import Client
 import pandas as pd
 
+from dotenv import load_dotenv
+import os
+from binance.client import Client
+from binance.enums import *    
+
+
 # Binance 클라이언트 생성 (API 키 없이 사용 가능)
 client = Client()
 
