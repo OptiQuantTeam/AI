@@ -1,1 +1,2 @@
 from .SpotTradingEnv import SpotTradingEnv
+from .FutureTradingEnv import FutureTradingEnv

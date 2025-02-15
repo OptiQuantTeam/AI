@@ -11,6 +11,7 @@ class SpotTradingEnv(gym.Env):
         self.holdings = 0
         self.action_space = gym.spaces.Discrete(3)
         self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(6,), dtype=np.float32)
+        self.avg_price = 0
 
     def reset(self):
         self.current_step = 0
@@ -37,15 +38,17 @@ class SpotTradingEnv(gym.Env):
         done = self.current_step >= len(self.data) - 1
 
         if action == 0 and self.balance > 0:
+            self.avg_price = price
             self.holdings += self.balance/price
             self.balance = 0
         elif action == 2 and self.holdings > 0:
             self.balance += self.holdings*price
-            reward = self.holdings*price - 10000
+            reward = self.holdings*price - self.holdings*self.avg_price
             self.holdings = 0
+            self.avg_price = 0
         
         if done and self.holdings > 0:
-            reward = self.holdings*price - self.balance
+            reward = self.holdings*price - self.avg_price
             self.balance += self.holdings*price
             self.holdings = 0
         

@@ -1,15 +1,15 @@
 import torch
 import pandas as pd
-from .IQNcomponent.IQNAgent import IQNAgent
-from env import SpotTradingEnv
+from .IQNcomponent import IQNAgent
+from env import SpotTradingEnv, FutureTradingEnv
 
 class IQN:
     def __init__(self):
         # Training Loop
         data = pd.read_csv(f'/workspace/data/raw/BTCUSDT/BTCUSDT-1h-2021.csv', index_col=0)
         data = data[['Open','High','Low','Close']]
-        self.env = SpotTradingEnv(data)
-        
+        #self.env = SpotTradingEnv(data)
+        self.env = FutureTradingEnv(data)
         self.agent = IQNAgent(self.env.observation_space.shape[0], self.env.action_space.n)
 
         
@@ -28,8 +28,12 @@ class IQN:
                 self.agent.update()
                 state = next_state
             self.agent.update_target_network()
-            print(f"Episode {episode}, Balance: {self.env.balance}, holdfings: {self.env.holdings}")
+            print(f"Episode {episode}, Balance: {self.env.balance}, holdings: {self.env.holdings}")
 
+    def predict(self):
+
+        #action = self.agent.select_action(state, epsilon)
+        pass
 
     def get_state(self):
         '''
