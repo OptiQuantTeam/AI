@@ -56,7 +56,7 @@ class IQNAgent:
             best_actions = next_q_values.mean(dim=1).argmax(dim=1, keepdim=True)
             target_q_values = next_q_values.gather(2, best_actions.unsqueeze(1).expand(-1, N_QUANTILES, -1))
             targets = reward.unsqueeze(1) + GAMMA * (1-done.unsqueeze(1)) * target_q_values
-
+        
         loss = (targets - q_values).abs().mean()
         self.optimizer.zero_grad()
         loss.backward()

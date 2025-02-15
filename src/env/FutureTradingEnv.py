@@ -16,11 +16,15 @@ class FutureTradingEnv(gym.Env):
         self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(6,), dtype=np.float32)
         self.position = NOTHING
         self.avg_price = 0
+        self.fee_rate = 0.02
+        self.leverage = 1
     
     def reset(self):
         self.current_step = 0
         self.balance = 10000
         self.holdings = 0
+        self.position = NOTHING
+        self.avg_price = 0
 
         return self._next_observation()
     
@@ -30,11 +34,11 @@ class FutureTradingEnv(gym.Env):
                          self.data.iloc[self.current_step]['Low']], dtype=np.float32)
     
     '''
-    action 0 : LONG 매수
-    action 1 : LONG 매도
-    action 2 : 관망
-    action 3 : SHORT 매수
-    action 4 : SHORT 매도
+    action 0 : BUY LONG
+    action 1 : SELL LONG
+    action 2 : HOLD
+    action 3 : BUY SHORT
+    action 4 : SELL SHORT
     '''
     def step(self, action):
         price = self.data.iloc[self.current_step]['Close']
@@ -44,59 +48,64 @@ class FutureTradingEnv(gym.Env):
         
         if action == 0 and self.position == NOTHING and self.balance > 0:
             self.avg_price = price
-            self.holdings += self.balance/price
+            self.holdings += (self.balance*self.leverage)/price
             self.balance = 0
             self.position = LONG
-            #print('buy long')
+            
         elif action == 0 and self.position == SHORT and self.holdings > 0:
             #sell short
             self.balance += self.holdings*(2*self.avg_price-price)
             reward = self.holdings*(self.avg_price-price)
             self.holdings = 0
-
             #buy long
             self.avg_price = price
-            self.holdings += self.balance/price
+            self.holdings += (self.balance*self.leverage)/price
             self.balance = 0
             self.position = LONG
-            print('short -> long')
+            
         elif action == 1 and self.position == LONG and self.holdings > 0:
             self.balance += self.holdings*price
-            reward = self.holdings*price - self.holdings*self.avg_price
+            reward = self.holdings*(price-self.avg_price)
             self.holdings = 0
             self.avg_price = 0
             self.position = NOTHING
-            #print(f'sell long {self.balance}')
+            
         elif action == 3 and self.position == NOTHING and self.balance > 0:
             self.avg_price = price
-            self.holdings += self.balance/price
+            self.holdings += (self.balance*self.leverage)/price
             self.balance = 0
             self.position = SHORT
-            #print('buy short')
-        elif action == 3 and self.position == LONG and self.balance > 0:
+            
+        elif action == 3 and self.position == LONG and self.holdings > 0:
             #sell long
             self.balance += self.holdings*price
-            reward = self.holdings*price - self.holdings*self.avg_price
+            reward = self.holdings*(price-self.avg_price)
             self.holdings = 0
             self.avg_price = 0
-
             #buy short
             self.avg_price = price
-            self.holdings += self.balance/price
+            self.holdings += (self.balance*self.leverage)/price
             self.balance = 0
             self.position = SHORT
-            print('long -> short')
+            
         elif action == 4 and self.position == SHORT and self.holdings > 0:
-            #print(f'avg : {self.avg_price}, price : {price}')
             self.balance += self.holdings*(2*self.avg_price-price)
             reward = self.holdings*(self.avg_price-price)
             self.holdings = 0
             self.position = NOTHING
-            #print(f'sell short {self.balance}')
+            
 
-        if done and self.holdings > 0:
-            reward = self.holdings*price
+        if done and self.position == SHORT and self.holdings > 0:
+            reward = self.holdings*(self.avg_price-price)
             self.balance += self.holdings*price
             self.holdings = 0
+        elif done and self.position == LONG and self.holdings > 0:
+            reward = self.holdings*(price-self.avg_price)
+            self.balance += self.holdings*price
+            self.holdings = 0
+
+        if reward > 0:
+            #print(f'{reward}')
+            reward *= 5
 
         return self._next_observation(), reward, done, {}
