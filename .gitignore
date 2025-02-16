@@ -1,5 +1,5 @@
 *.csv
 __pycache__
 *.pt
-
+.env
 *.json
