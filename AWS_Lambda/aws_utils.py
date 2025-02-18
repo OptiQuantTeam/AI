@@ -18,9 +18,9 @@ def download_model(s3, bucket='optiquantbucket', prefix='main/'):
     models_list = obj_list['Contents']
     key = models_list[1]['Key']
     file_name = key.split('/')[-1]
-    PATH = f'/workspace/src/{file_name}'
+    PATH = f'/workspace/AWS_Lambda/{file_name}'
 
     s3.download_file(bucket, key, PATH)
-    model = file_name.split('-')[0]
+    model_name = file_name.split('-')[0]
 
-    return model
+    return model_name, file_name
