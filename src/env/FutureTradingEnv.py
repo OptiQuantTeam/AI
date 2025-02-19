@@ -13,7 +13,7 @@ class FutureTradingEnv(gym.Env):
         self.balance = 10000
         self.holdings = 0
         self.action_space = gym.spaces.Discrete(5)
-        self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(6,), dtype=np.float32)
+        self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(7,), dtype=np.float32)
         self.position = NOTHING
         self.avg_price = 0
         self.fee_rate = 0.02
@@ -30,8 +30,8 @@ class FutureTradingEnv(gym.Env):
     
     def _next_observation(self):
         return np.array([self.balance, self.holdings, self.data.iloc[self.current_step]['Open'],
-                         self.data.iloc[self.current_step]['Close'], self.data.iloc[self.current_step]['High'],
-                         self.data.iloc[self.current_step]['Low']], dtype=np.float32)
+                         self.data.iloc[self.current_step]['Close'], self.data.iloc[self.current_step]['CHG'],
+                         self.data.iloc[self.current_step]['stocRSI'], self.data.iloc[self.current_step]['MACD']], dtype=np.float32)
     
     '''
     action 0 : BUY LONG

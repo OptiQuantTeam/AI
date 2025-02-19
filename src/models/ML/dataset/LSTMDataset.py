@@ -13,8 +13,8 @@ class LSTMDataset(Dataset):
 
         # 정규화
         self.scaled_data = self.data.copy()
-        self.scaled_data[['Open', 'High', 'Low', 'Close', 'RSI', 'EMAF']] = \
-            self.scaled_data[['Open', 'High', 'Low', 'Close', 'RSI', 'EMAF']].apply(
+        self.scaled_data[['Open', 'Close', 'Volume', 'CHG', 'stocRSI', 'MACD']] = \
+            self.scaled_data[['Open', 'Close', 'Volume', 'CHG', 'stocRSI', 'MACD']].apply(
                 lambda x: (x - x.min()) / (x.max() - x.min())
             )
     
@@ -26,7 +26,7 @@ class LSTMDataset(Dataset):
         특정 인덱스에 해당하는 데이터 반환.
         """
         # 시계열 데이터 슬라이스
-        features = self.scaled_data[['Open', 'High', 'Low', 'Close', 'RSI', 'EMAF']].iloc[
+        features = self.scaled_data[['Open', 'Close', 'Volume', 'CHG', 'stocRSI', 'MACD']].iloc[
                    idx:idx + self.sequence_length].values
         target = self.data['Target'].iloc[idx + self.sequence_length]
 

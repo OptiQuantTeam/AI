@@ -4,7 +4,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 
 from models.ML import LSTM, train, test, LSTMDataset, create_targets
-from data import getTrainData
+from data.getData import getTrainData
 
 # 모델 설정
 # 현재 데이터 가져오기
@@ -25,7 +25,7 @@ num_layers = 2
 output_size = 3  # 매수, 매도, 대기
 sequence_length = 10
 learning_rate = 0.001
-epochs = 20
+epochs = 100
 batch_size = 32
 
 
@@ -35,7 +35,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 model = LSTM(input_size=input_size, hidden_size=hidden_size, num_layers=num_layers, output_size=output_size)
 
-data = getTrainData(ticker='BTCUSDT', startYear=2017, endYear=2022, interval='1h', raw=True)
+#data = getTrainData(ticker='BTCUSDT', startYear=2017, endYear=2022, interval='1h', raw=True)
+data = getTrainData(interval='1h', raw=False)
 # Target 열 생성
 data = create_targets(data, threshold_up, threshold_down, future_window)
 
@@ -53,7 +54,7 @@ val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
 train(model, train_loader, val_loader, epochs, learning_rate, device)
 
-
+'''
 new_data = getTrainData(ticker='BTCUSDT', startYear=2023, interval='1h', raw=True)
 new_data = create_targets(new_data, threshold_up, threshold_down, future_window)
 
@@ -64,3 +65,4 @@ test(model, pred_loader, device)
 
 
 torch.save(model.state_dict(), 'LSTM-20250122.pt')
+'''

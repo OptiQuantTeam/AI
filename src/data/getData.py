@@ -1,25 +1,25 @@
 import pandas as pd
-from indicator import RSI, EMA
+#from indicator import RSI, EMA
 import requests
 from datetime import datetime
 
 def getTrainData(ticker='BTCUSDT', startYear=2017, endYear=2023, interval='1h', raw=True):
     
-    data = pd.DataFrame()
-    while startYear<=endYear:
-        path=''
-        if raw:
+    if raw:
+        data = pd.DataFrame()
+        while startYear<=endYear:
             path = f'/workspace/data/raw/{ticker}/{ticker}-{interval}-{startYear}.csv'
-        else:
-            path = f'/workspace/data/processed/{ticker}/{ticker}-{interval}-{startYear}.csv'
+            
 
-        tmp = pd.read_csv(path, index_col=0)
-        tmp['RSI'] = RSI(tmp)
-        tmp['EMAF'] = EMA(tmp, window=10)
-        tmp = tmp[['Open','High','Low','Close','RSI','EMAF']]
-        data = pd.concat([data, tmp])
-        startYear += 1
-
+            tmp = pd.read_csv(path, index_col=0)
+            tmp['RSI'] = RSI(tmp)
+            tmp['EMAF'] = EMA(tmp, window=10)
+            tmp = tmp[['Open','High','Low','Close','RSI','EMAF']]
+            data = pd.concat([data, tmp])
+            startYear += 1
+    else:
+        path = f'/workspace/data/preprocess/{ticker}/{ticker}-{interval}.csv'
+        data = pd.read_csv(path, index_col=0)
     return data
 
 
