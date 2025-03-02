@@ -6,7 +6,7 @@ from env import SpotTradingEnv, FutureTradingEnv
 class IQN:
     def __init__(self):
         # Training Loop
-        data = pd.read_csv(f'/workspace/data/preprocess/BTCUSDT/BTCUSDT-1d.csv', index_col=0)
+        data = pd.read_csv(f'/workspace/data/preprocess/BTCUSDT/BTCUSDT-1h.csv', index_col=0)
         data = data[['Open','Close','Volume','CHG','stocRSI','MACD']]
         #self.env = SpotTradingEnv(data)
         self.env = FutureTradingEnv(data)
