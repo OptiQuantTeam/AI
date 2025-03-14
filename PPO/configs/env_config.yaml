@@ -1,0 +1,10 @@
+hmax: 100
+current_step: 0
+initial_position: NOTHING
+initial_holdings: 0
+nb_stock: 30
+reward_scaling: 0.0001
+env_type: 'train'
+price : 0
+transacton_fee : 0.02
+leverage : 1
