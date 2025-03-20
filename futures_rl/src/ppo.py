@@ -25,17 +25,10 @@ class ActorCritic(nn.Module):
             nn.Tanh()  # -1 ~ 1 범위로 제한
         )
         
-        # 액터 네트워크 (정책) - 거래량 비율
-        self.actor_volume = nn.Sequential(
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, 1),
-            nn.Sigmoid()  # 0 ~ 1 범위로 제한
-        )
+
         
         # 행동의 표준편차
         self.actor_direction_std = nn.Parameter(torch.zeros(1))
-        self.actor_volume_std = nn.Parameter(torch.zeros(1))
         
         # 크리틱 네트워크 (가치 함수)
         self.critic = nn.Sequential(
@@ -51,13 +44,10 @@ class ActorCritic(nn.Module):
         direction_mean = self.actor_direction(features)
         direction_std = torch.exp(self.actor_direction_std).expand_as(direction_mean)
         
-        volume_mean = self.actor_volume(features)
-        volume_std = torch.exp(self.actor_volume_std).expand_as(volume_mean)
-        
         # 크리틱: 상태 가치
         value = self.critic(features)
         
-        return direction_mean, direction_std, volume_mean, volume_std, value
+        return direction_mean, direction_std, value
 
 class PPO:
     def __init__(
@@ -75,9 +65,7 @@ class PPO:
         self.optimizer = optim.Adam([
             {'params': self.actor_critic.feature_extraction.parameters()},
             {'params': self.actor_critic.actor_direction.parameters()},
-            {'params': self.actor_critic.actor_volume.parameters()},
-            {'params': self.actor_critic.actor_direction_std},
-            {'params': self.actor_critic.actor_volume_std},
+            {'params': self.actor_critic.actor_direction_std},            
             {'params': self.actor_critic.critic.parameters(), 'lr': lr_critic}
         ], lr=lr_actor)
         
@@ -92,7 +80,7 @@ class PPO:
         state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
         
         with torch.no_grad():
-            direction_mean, direction_std, volume_mean, volume_std, value = self.actor_critic(state)
+            direction_mean, direction_std, value = self.actor_critic(state)
             
         # 포지션 방향 샘플링
         direction_dist = Normal(direction_mean, direction_std)
@@ -149,7 +137,7 @@ class PPO:
         gae = 0
         
         with torch.no_grad():
-            next_value = self.actor_critic(next_state_batch)[4]  # value는 5번째 반환값
+            next_value = self.actor_critic(next_state_batch)[2]  # value는 5번째 반환값
             next_value = next_value.squeeze()
             
             for r, v, done, next_v in zip(
@@ -192,11 +180,10 @@ class PPO:
                 old_log_prob = old_log_prob_batch[idx]
                 
                 # 현재 정책의 행동 분포
-                direction_mean, direction_std, volume_mean, volume_std, value = self.actor_critic(state)
+                direction_mean, direction_std, value = self.actor_critic(state)
                 
                 # 방향과 거래량에 대한 분포
                 direction_dist = Normal(direction_mean, direction_std)
-                volume_dist = Normal(volume_mean, volume_std)
                 
                 # 새로운 로그 확률 계산
                 new_log_prob = direction_dist.log_prob(action[:, 0:1])
@@ -213,7 +200,7 @@ class PPO:
                 
                 # 가치 함수 손실
                 value = value.squeeze()
-                critic_loss = nn.MSELoss()(value, return_)
+                critic_loss = nn.CrossEntropyLoss()(value, return_)
                 
                 # 전체 손실
                 loss = actor_loss + 0.5 * critic_loss
