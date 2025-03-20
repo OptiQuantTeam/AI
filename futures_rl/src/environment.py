@@ -19,14 +19,8 @@ class FuturesEnv(gym.Env):
     def __init__(self, path=None):
         self.path = path
         self.initial_balance = 100000000
-        self.balance = self.initial_balance
         self.actions = ['LONG', 'SHORT', 'FLAT']
-        self.position = FLAT
-        self.action = HOLD
-        self.size = 0
         self.leverage = 2
-        self.current_step = 0
-        self.entry_price = 1
 
         self.trade_fee = 0.0002
         self.load_data()
@@ -49,13 +43,15 @@ class FuturesEnv(gym.Env):
         self.position = FLAT
         self.action = HOLD
         self.size = 0
-        self.entry_price = 0
+        self.entry_price = 1
         self.position_size = 0
         self.returns_history = [0]
         self.num = 0
+        self.liquidated = False
+        self.clear = False
         
-        print(f"학습 시작 위치: {self.current_step} (전체 데이터 중 {self.current_step/len(self.data)*100:.2f}%)")
-        print(f"시작 시간: {self.data.index[self.current_step]}")
+        print(f"학습 시작 위치: {self.current_step} (전체 데이터 중 {self.current_step/len(self.data)*100:.2f}%)\n")
+        #print(f"Start Step: {self.data.index[self.current_step]}\n")
         
         return self._next_observation()
     
@@ -67,7 +63,6 @@ class FuturesEnv(gym.Env):
     def step(self, action):
         current_price = self.data.iloc[self.current_step]['Close']
         done = self.current_step >= len(self.data) - 1
-        liquidated = False
         reward = -1
         
 
@@ -83,18 +78,25 @@ class FuturesEnv(gym.Env):
             if self.position != 0:
                 profit = -position_direction * (current_price - self.entry_price) * self.size
                 self.balance += profit
+                '''
                 if self.position_size != 0 and -position_direction * (current_price - self.entry_price) / self.entry_price > 0.7:
                     reward = profit * 100
                 else:
                     reward = profit
+                '''
+                reward += - position_direction * (current_price - self.entry_price) / self.entry_price
             
             profit_rate = (self.balance - self.initial_balance) / self.initial_balance 
             self.returns_history.append(profit_rate * 100)   
-            if self.balance < self.initial_balance * 0.3:
+            if self.balance < self.initial_balance * 0.7:
                 done = True
-                reward = -100000 + self.num * 10
-                liquidated = True
-
+                reward += -10000 - self.num * 10
+                self.liquidated = True
+            elif self.balance > self.initial_balance * 2:
+                done = True
+                reward += 10000 - self.num
+                self.clear = True
+            
             # 새로운 포지션 진입
             if position_direction != 0 and not done:
                 # 진입 비용 계산
@@ -112,15 +114,23 @@ class FuturesEnv(gym.Env):
             self.current_step += 1
 
         info = {
-            'liquidated': liquidated,
+            'liquidated': self.liquidated,
+            'clear': self.clear,
+            'balance': self.balance
         }
         # 다음 가격으로 포지션 가치 업데이트
         return self._next_observation(), float(reward), done, info
 
     def render(self):
         # Render the environment to the screen
-        profit = self.balance - self.initial_balance
-        profit_rate = (self.balance - self.initial_balance) / self.initial_balance
-        print(f'Last Step: {self.current_step}')
-        print(f'Balance: {self.balance}')
-        print(f'Profit: {profit}, Profit Rate: {profit_rate}')
+        if not self.liquidated and not self.clear:
+            print(f'마지막 데이터')
+        else:
+            print(f"  청산 여부: {'청산됨' if self.liquidated else '정상 종료'}")
+            print(f"  목표 달성 여부: {'목표 달성' if self.clear else '달성 실패'}")
+        profit = float(self.balance - self.initial_balance)
+        profit_rate = float((self.balance - self.initial_balance) * 100 / self.initial_balance)
+        print(f'\n학습 마지막 위치: {self.current_step}')
+        print(f'Balance: {float(self.balance):.2f}')
+        print(f'Profit: {float(profit):.2f}, Profit Rate: {float(profit_rate):.2f}%')
+        print('========================================================')

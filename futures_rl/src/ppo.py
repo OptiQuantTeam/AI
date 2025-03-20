@@ -4,6 +4,7 @@ import torch.optim as optim
 from torch.distributions import Normal
 import numpy as np
 from collections import deque
+import datetime
 
 class ActorCritic(nn.Module):
     def __init__(self, state_dim, action_dim):
@@ -54,6 +55,7 @@ class PPO:
         self, 
         state_dim, 
         action_dim, 
+        model_name=None,
         lr_actor=3e-4,
         lr_critic=1e-3,
         gamma=0.99,
@@ -73,7 +75,8 @@ class PPO:
         self.epsilon = epsilon
         self.epochs = epochs
         self.device = device
-        
+        self.model_name = model_name
+
         self.memory = deque()
         
     def select_action(self, state):
@@ -213,3 +216,15 @@ class PPO:
         
         # 메모리 비우기
         self.memory.clear() 
+    
+    def save_model(self, data, path):
+        torch.save(data, path)
+    
+    def checkpoint(self, data, path):
+        torch.save(data, path)
+    
+    def load_model(self):
+        self.actor_critic.load_state_dict(torch.load(f'futures_rl/models/{self.model_name}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.pth'))
+    
+    def load_checkpoint(self, path):
+        return torch.load(path)

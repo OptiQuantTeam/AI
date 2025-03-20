@@ -1,32 +1,29 @@
 from environment import FuturesEnv
 from ppo import PPO
-import numpy as np
-import matplotlib.pyplot as plt
-import torch
-import pandas as pd
-from preprocess import preprocess_data
 import datetime
 import json
-from pathlib import Path
+from graph import plot_cumulative_result
 
-
-def train_ppo(env, ppo_agent, num_episodes=1000):
+def train(env, ppo_agent, num_episodes=1000, **kwargs):
     episode_rewards = []
     all_episode_returns = []
     episode_start_positions = []
+    episode_results = [0]
+
     is_normal_exit = False
     
-    checkpoint_dir = Path('futures_rl/checkpoints')
-    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    episode_range = range(kwargs['start_episode'], num_episodes) if 'start_episode' in kwargs else range(num_episodes)
+    checkpoint_term = kwargs['checkpoint_term'] if 'checkpoint_term' in kwargs else 100
+
     
     start_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     
     try:
-        for episode in range(num_episodes):
-            print(f"\n에피소드 {episode + 1} 시작")
+        for episode in episode_range:
+            print('\n========================================================')
+            print(f"에피소드 {episode + 1} 시작")
             state = env.reset()
             episode_reward = 0
-            was_liquidated = False
             
             episode_start_positions.append({
                 'step': env.current_step,
@@ -41,8 +38,7 @@ def train_ppo(env, ppo_agent, num_episodes=1000):
                 action, value, log_prob = ppo_agent.select_action(state)
                 next_state, reward, done, info = env.step(action)
                 
-                if info['liquidated']:
-                    was_liquidated = True
+                
                 
                 ppo_agent.store_transition((state, action, reward, next_state, log_prob, value, done))
                 
@@ -54,20 +50,32 @@ def train_ppo(env, ppo_agent, num_episodes=1000):
                     ppo_agent.update()
                 
                 if done:
-                    env.render()
+                    if info['clear']:
+                        result = 1
+                    elif info['liquidated']:
+                        result = -1
+                    else:
+                        result = 0
+                    episode_results.append(result)
                     break
             
-            print(f"  현재 step: {env.num}, 에피소드 보상: {episode_reward:.2f}, 업데이트 횟수: {update_count}")
-            print(f"  청산 여부: {'청산됨' if was_liquidated else '정상 종료'}")
+            print(f"  반복한 step: {env.num}, 에피소드 보상: {episode_reward:.2f}, 업데이트 횟수: {update_count}\n")
+            env.render()
+            
             
             episode_rewards.append(episode_reward)
             final_return = env.returns_history[-1]
             all_episode_returns.append(final_return)
             
             # 주기적으로 체크포인트 저장
-            if (episode + 1) % 100 == 0:
-                checkpoint_path = checkpoint_dir / f'checkpoint_ep_{episode + 1}.pth'
-                torch.save({
+            if (episode + 1) % checkpoint_term == 0:
+                ppo_agent.checkpoint({
+                    'model_name': ppo_agent.model_name,
+                    'state_dim': env.observation_space.shape[0],
+                    'action_dim': env.action_space.shape[0],
+                    'gamma': ppo_agent.gamma,
+                    'epsilon': ppo_agent.epsilon,
+                    'epochs': ppo_agent.epochs,
                     'actor_critic_state_dict': ppo_agent.actor_critic.state_dict(),
                     'optimizer_state_dict': ppo_agent.optimizer.state_dict(),
                     'rewards_history': episode_rewards,
@@ -76,11 +84,11 @@ def train_ppo(env, ppo_agent, num_episodes=1000):
                     'episode_start_positions': episode_start_positions,
                     'current_episode': episode + 1,
                     'total_episodes': num_episodes
-                }, checkpoint_path)
-                print(f"\n체크포인트 저장됨: {checkpoint_path}")
+                }, f'futures_rl/checkpoints/{ppo_agent.model_name}_ep_{episode + 1}.pth')
+                print(f"\n체크포인트 저장됨: {episode + 1}")
         
-        is_normal_exit = True  # 모든 에피소드가 정상적으로 완료됨
-        
+        is_normal_exit = True
+
     except KeyboardInterrupt:
         print("\n학습이 사용자에 의해 중단되었습니다.")
     except Exception as e:
@@ -88,16 +96,16 @@ def train_ppo(env, ppo_agent, num_episodes=1000):
         raise e
     finally:
         try:
-            # 저장할 파일 경로 결정
-            if is_normal_exit:
-                save_path = f'futures_rl/models/final_model_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.pth'
-                save_prefix = "최종"
-            else:
-                save_path = checkpoint_dir / f'emergency_checkpoint_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.pth'
-                save_prefix = "긴급"
+       
             
             # 체크포인트 데이터 준비
             checkpoint_data = {
+                'model_name': ppo_agent.model_name,
+                'state_dim': env.observation_space.shape[0],
+                'action_dim': env.action_space.shape[0],
+                'gamma': ppo_agent.gamma,
+                'epsilon': ppo_agent.epsilon,
+                'epochs': ppo_agent.epochs,
                 'actor_critic_state_dict': ppo_agent.actor_critic.state_dict(),
                 'optimizer_state_dict': ppo_agent.optimizer.state_dict(),
                 'rewards_history': episode_rewards if 'episode_rewards' in locals() else [],
@@ -108,9 +116,6 @@ def train_ppo(env, ppo_agent, num_episodes=1000):
                 'total_episodes': num_episodes,
                 'timestamp': datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
             }
-            
-            # 체크포인트 저장
-            torch.save(checkpoint_data, save_path)
             
             # 메타데이터 저장
             if 'episode_start_positions' in locals() and episode_start_positions:
@@ -127,38 +132,30 @@ def train_ppo(env, ppo_agent, num_episodes=1000):
                         'mean_step': sum(start_steps) / len(start_steps)
                     }
                 }
-                
-                with open(checkpoint_dir / 'training_metadata.json', 'w') as f:
+
+            time = datetime.datetime.now().strftime("%Y%m%d_%H:%M:%S")
+            if is_normal_exit:
+                ppo_agent.save_model(checkpoint_data, f'futures_rl/models/{ppo_agent.model_name}_{time}.pth')
+                with open(f'futures_rl/json/{ppo_agent.model_name}_metadata_{time}.json', 'w') as f:
                     json.dump(metadata, f, indent=4)
+                plot_cumulative_result(episode_results, f'futures_rl/results/{ppo_agent.model_name}_result_{time}.png')
+                
+            else:
+                ppo_agent.save_model(checkpoint_data, f'futures_rl/checkpoints/{ppo_agent.model_name}_{time}.pth')
+                with open(f'futures_rl/json/{ppo_agent.model_name}_checkpoint_{time}.json', 'w') as f:
+                    json.dump(metadata, f, indent=4)
+
+                
             
-            print(f"\n{save_prefix} 체크포인트가 저장되었습니다: {save_path}")
+            print(f"\n체크포인트가 저장되었습니다: {time}")
             
         except Exception as save_error:
             print(f"\n체크포인트 저장 중 에러 발생: {str(save_error)}")
     
+    
     return episode_rewards, env.returns_history, all_episode_returns
 
-def plot_results(rewards, returns_history, all_episode_returns):
-    plt.figure(figsize=(15, 10))
-    
-    # 보상 그래프
-    plt.subplot(2, 1, 1)
-    plt.plot(rewards)
-    plt.title('reward Graph')
-    plt.xlabel('episode')
-    plt.ylabel('reward')
-    
-    # 수익률 그래프
-    plt.subplot(2, 1, 2)
-    plt.plot(returns_history, label='step per episode')
-    plt.title('profit rate Graph')
-    plt.xlabel('episode')
-    plt.ylabel('profit rate (%)')
-    plt.legend()
-    
-    plt.tight_layout()
-    plt.savefig('training_results.png')
-    plt.close()
+
 
 if __name__ == "__main__":
     # 환경 생성
@@ -179,4 +176,4 @@ if __name__ == "__main__":
     )
     
     # 학습 실행
-    rewards_history, returns_history, all_episode_returns = train_ppo(env, ppo_agent, num_episodes=2000)
+    rewards_history, returns_history, all_episode_returns = train(env, ppo_agent, num_episodes=2000)
