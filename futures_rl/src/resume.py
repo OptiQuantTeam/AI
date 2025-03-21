@@ -5,7 +5,10 @@ from train import train
 from ppo import PPO
 
 def load_checkpoint(path):
-    return torch.load(path)
+    if torch.cuda.is_available():
+        return torch.load(path, map_location=torch.device('cuda'))
+    else:
+        return torch.load(path, map_location=torch.device('cpu'))
 
 def resume(env, checkpoint_path, num_episodes=2000):
     try:

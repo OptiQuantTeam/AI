@@ -4,7 +4,10 @@ from train import train
 from ppo import PPO
 
 def load_checkpoint(checkpoint_path):
-    return torch.load(checkpoint_path)
+    if torch.cuda.is_available():
+        return torch.load(checkpoint_path, map_location=torch.device('cuda'))
+    else:
+        return torch.load(checkpoint_path, map_location=torch.device('cpu'))
 
 def continue_training(env, checkpoint_path, additional_episodes=1000):
     try:

@@ -52,8 +52,6 @@ def train(env, ppo_agent, num_episodes=1000, **kwargs):
                 if done:
                     if info['clear']:
                         result = 1
-                    elif info['liquidated']:
-                        result = -1
                     else:
                         result = 0
                     episode_results.append(result)
@@ -84,7 +82,7 @@ def train(env, ppo_agent, num_episodes=1000, **kwargs):
                     'episode_start_positions': episode_start_positions,
                     'current_episode': episode + 1,
                     'total_episodes': num_episodes
-                }, f'futures_rl/checkpoints/{ppo_agent.model_name}_ep_{episode + 1}.pth')
+                }, f'futures_rl/checkpoints/{ppo_agent.model_name}_{datetime.datetime.now().strftime("%Y%m%d_%H:%M:%S")}_ep_{episode + 1}.pth')
                 print(f"\n체크포인트 저장됨: {episode + 1}")
         
         is_normal_exit = True

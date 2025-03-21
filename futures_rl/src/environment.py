@@ -27,7 +27,7 @@ class FuturesEnv(gym.Env):
         self.returns_history = []
         self.max_steps = 1000
         self.action_space = spaces.Box(low=-1.0, high=1.0, dtype=np.float32)
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(8,), dtype=np.float32)
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(6,), dtype=np.float32)
 
 
     def load_data(self):
@@ -56,9 +56,8 @@ class FuturesEnv(gym.Env):
         return self._next_observation()
     
     def _next_observation(self):
-        return np.array([float(self.balance), float(self.position), self.data.iloc[self.current_step]['Open'],
-                         self.data.iloc[self.current_step]['Close'], self.data.iloc[self.current_step]['Volume'], self.data.iloc[self.current_step]['CHG'],
-                         self.data.iloc[self.current_step]['stocRSI'], self.data.iloc[self.current_step]['MACD']], dtype=np.float32)
+        return np.array([self.data.iloc[self.current_step]['Open'], self.data.iloc[self.current_step]['Close'], self.data.iloc[self.current_step]['Volume'], 
+                         self.data.iloc[self.current_step]['CHG'], self.data.iloc[self.current_step]['stocRSI'], self.data.iloc[self.current_step]['MACD']], dtype=np.float32)
         
     def step(self, action):
         current_price = self.data.iloc[self.current_step]['Close']

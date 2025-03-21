@@ -28,14 +28,14 @@ def plot_cumulative_result(cumulative_results, path):
     
     # 기본 누적합 그래프
     plt.plot(cumsum, label='Cumulative Result')
-    
+    '''
     # 증가하는 지점에 마커 추가
     if increasing_points:
         plt.plot(increasing_points, cumsum[increasing_points], 
                 'o', color='red', markersize=4, 
                 label='Increasing Points', alpha=0.5)
-    
-    plt.title(f'Cumulative Result Graph : [{cumsum[-1]}]')
+    '''
+    plt.title(f'Cumulative Result Graph : [{cumsum[-1]}/{len(cumsum)-1}]')
     plt.xlabel('Episode')
     plt.ylabel('Cumulative Return')
     plt.legend()
@@ -62,7 +62,7 @@ def plot_cumulative_result_log(cumulative_results, path):
                 'o', color='red', markersize=4, 
                 label='Increasing Points', alpha=0.5)
     
-    plt.title(f'Cumulative Result Graph : [{cumsum[-1]}]')
+    plt.title(f'Cumulative Result Graph : [{cumsum[-1]}/{len(cumsum)-1}]')
     plt.xlabel('Episode')
     plt.ylabel('Cumulative Return')
     plt.yscale('log')
