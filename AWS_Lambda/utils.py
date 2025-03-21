@@ -1,139 +1,135 @@
+import requests
+from datetime import datetime
 import torch
-import torch.optim as optim
-import torch.nn as nn
-#from sklearn.metrics import accuracy_score
+from ppo import PPO
+from indicator import RSI, EMA, CHG, StochasticRSI, MACD
 import pandas as pd
-# 모델 불러오기(존재하면 추가 학습, 없다면 새로 학습)
-# 데이터 불러오기
-# 학습하기
-# 모델 저장하기
 
-def train(model, train_loader, val_loader, epochs, learning_rate, device):
-    """
-    LSTM 모델 학습 함수
-    :param model: LSTM 모델
-    :param train_loader: 학습 데이터 로더
-    :param val_loader: 검증 데이터 로더
-    :param epochs: 학습 에폭 수
-    :param learning_rate: 학습률
-    :param device: 학습에 사용할 디바이스 (CPU/GPU)
-    """
-    # 손실 함수 및 옵티마이저
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+# 1분, 5분, 30분, 1시간 등의 데이터(현재 데이터)를 거래소로부터 가져온다.
+def getCurrentData(symbol, interval='1m', limit=None):
+    url = "https://api.binance.com/api/v3/klines"
+    columns = ['Open time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close time', 'Base asset volume', 'Number of trades',\
+                'Taker buy volume', 'Taker buy base asset volume', 'Ignore']
     
-    # 모델 학습
-    for epoch in range(epochs):
-        model.train()
-        train_loss = 0
-        train_targets = []
-        train_predictions = []
 
-        for features, targets in train_loader:
-            features, targets = features.to(device), targets.to(device)
-            
-            # 순전파
-            outputs = model(features)
-            loss = criterion(outputs, targets)
-            train_loss += loss.item()
+    params = {
+        "symbol": symbol,
+        "interval": interval,
+        "startTime": None,
+        "endTime": None,
+        "limit": limit
+    }
+    res = requests.get(url, params=params)
+    value = res.json()
 
-            # 역전파 및 가중치 업데이트
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+    df = pd.DataFrame(value, columns=columns)
+    
+    df['Open'] = df['Open'].astype('float')
+    df['High'] = df['High'].astype('float')
+    df['Low'] = df['Low'].astype('float')
+    df['Close'] = df['Close'].astype('float')
+    df['Volume'] = df['Volume'].astype('float')
+    df['RSI'] = RSI(df)
+    df['EMAF'] = EMA(df, window=10)
 
-            # 예측 저장
-            _, predicted = torch.max(outputs, 1)
-            train_targets.extend(targets.cpu().numpy())
-            train_predictions.extend(predicted.cpu().numpy())
+    df['Open time'] = df['Open time'].astype('int')
+    df['Open time'] = df['Open time'].apply(lambda x : datetime.fromtimestamp(x/1000))
+    df['Close time'] = df['Close time'].astype('int')
+    df['Close time'] = df['Close time'].apply(lambda x : datetime.fromtimestamp(x/1000))
+    df = df.set_index('Open time')
+    #print(df)
+    df['CHG'] = CHG(df)
+    df['stocRSI'] = StochasticRSI(df)
+    df['MACD'] = MACD(df)
+    df = df[['Open','Close','Volume','CHG','stocRSI','MACD']]
+
+    return df
+
+
+
+def preprocess_data(df):
+    """데이터 전처리: 결측치 처리 및 정규화"""
+    # 필요한 컬럼만 선택
+    df = df[['Open', 'Close', 'Volume', 'CHG', 'stocRSI', 'MACD']]
+    
+    # 결측치 처리
+    #df = df.fillna(method='ffill')  # 앞의 값으로 채우기
+    df = df.ffill()
+    df = df.bfill()
+    #df = df.fillna(method='bfill')  # 뒤의 값으로 채우기
+
+    # 이상치 제거 (극단값 제거)
+    for column in ['Open', 'Close', 'Volume', 'CHG']:
+        q1 = df[column].quantile(0.01)
+        q3 = df[column].quantile(0.99)
+        df[column] = df[column].clip(q1, q3)
+    
+    # 정규화
+    '''
+    for column in ['Open', 'Close', 'Volume', 'CHG']:
+        mean = df[column].mean()
+        std = df[column].std()
+        df[column] = (df[column] - mean) / (std + 1e-8)
+    '''
+    # stocRSI와 MACD는 이미 정규화된 형태이므로 극단값만 처리
+    df['stocRSI'] = df['stocRSI'].clip(0, 100)
+    df['MACD'] = df['MACD'].clip(-10, 10)  # 적절한 범위로 조정
+    
+    return df.iloc[-1]
+
+
+
+def load_checkpoint(file_path):
+    if torch.cuda.is_available():
+        return torch.load(file_path, map_location=torch.device('cuda'))
+    else:
+        return torch.load(file_path, map_location=torch.device('cpu'))
+
+def test(file_path):
+    try:
+        state = getCurrentData("BTCUSDT", "1h", limit=12)
+        state = preprocess_data(state)  
+
+        checkpoint = load_checkpoint(file_path)
         
-        # 학습 정확도
-        #train_accuracy = accuracy_score(train_targets, train_predictions)
 
-        # 검증
-        model.eval()
-        val_loss = 0
-        val_targets = []
-        val_predictions = []
-        with torch.no_grad():
-            for features, targets in val_loader:
-                features, targets = features.to(device), targets.to(device)
-                outputs = model(features)
-                loss = criterion(outputs, targets)
-                val_loss += loss.item()
-
-                _, predicted = torch.max(outputs, 1)
-                val_targets.extend(targets.cpu().numpy())
-                val_predictions.extend(predicted.cpu().numpy())
         
-        #val_accuracy = accuracy_score(val_targets, val_predictions)
+        # 이전 학습 상태 확인
+        model_name = checkpoint.get('model_name', 'ppo')
+        state_dim = checkpoint.get('state_dim', 12)
+        action_dim = checkpoint.get('action_dim', 1)
+        gamma = checkpoint.get('gamma', 0.99)
+        epsilon = checkpoint.get('epsilon', 0.2)
+        epochs = checkpoint.get('epochs', 10)
+        
+        # 옵티마이저에서 학습률 가져오기
+        optimizer_state = checkpoint['optimizer_state_dict']
+        lr_actor = optimizer_state['param_groups'][0]['lr']  # actor의 학습률
+        lr_critic = optimizer_state['param_groups'][3]['lr']  # critic의 학습률
 
-        print(f"Epoch [{epoch+1}/{epochs}], "
-              f"Train Loss: {train_loss/len(train_loader):.4f}, Train Acc: , "
-              f"Val Loss: {val_loss/len(val_loader):.4f}, Val Acc: ")
+             
+        ppo_agent = PPO(
+            state_dim=state_dim,
+            action_dim=action_dim,
+            model_name=model_name,
+            lr_actor=lr_actor,
+            lr_critic=lr_critic,
+            gamma=gamma,
+            epsilon=epsilon,
+            epochs=epochs
+        )
 
-    print("Training Complete") 
+        # 모델 가중치 로드
+        ppo_agent.actor_critic.load_state_dict(checkpoint['actor_critic_state_dict'])
+        optimizer_state['param_groups'][0]['lr'] = lr_actor  # actor 학습률
+        optimizer_state['param_groups'][3]['lr'] = lr_critic  # critic 학습률
+        ppo_agent.optimizer.load_state_dict(optimizer_state)
 
+        
+        action, value, log_prob = ppo_agent.select_action(state)
 
-def test(model, pred_loader, device):
-    """
-    실시간 예측 함수
-    :param model: 학습된 LSTM 모델
-    :param input_data: 새로운 입력 데이터 (시퀀스 형태)
-    :param device: 사용할 디바이스 (CPU/GPU)
-    :return: 매수(0), 매도(1), 대기(2) 중 하나
-    
-    model.eval()
-    with torch.no_grad():
-        input_tensor = torch.tensor(input_data, dtype=torch.float32).unsqueeze(0).to(device)
-        print(input_tensor.shape)
-        outputs = model(input_tensor)
-        _, predicted = torch.max(outputs, 1)
-        return predicted.item()
-    """
-    model.eval()
+        return action
 
-    pred_targets = []
-    pred_predictions = []
-    with torch.no_grad():
-        for features, targets in pred_loader:
-            features, targets = features.to(device), targets.to(device)
-            outputs = model(features)
-
-            _, predicted = torch.max(outputs, 1)
-            pred_predictions.extend(predicted.cpu().numpy())
-            pred_targets.extend(targets.cpu().numpy())
-    #pred_accuracy = accuracy_score(pred_targets, pred_predictions)
-    #print(f"Predict Acc: {pred_accuracy:.4f}")
-    
-
-# 입력 데이터에 대한 JSON 형태로 출력을 반환
-
-def predict(model, input_data, device):
-    """
-    실시간 예측 함수
-    :param model: 학습된 LSTM 모델
-    :param input_data: 새로운 입력 데이터 (시퀀스 형태)
-    :param device: 사용할 디바이스 (CPU/GPU)
-    :return: 매수(0), 매도(1), 대기(2) 중 하나
-    
-    model.eval()
-    with torch.no_grad():
-        input_tensor = torch.tensor(input_data, dtype=torch.float32).unsqueeze(0).to(device)
-        print(input_tensor.shape)
-        outputs = model(input_tensor)
-        _, predicted = torch.max(outputs, 1)
-        return predicted.item()
-    """
-    #model.eval()
- 
-    with torch.no_grad():
-        input_tensor = torch.tensor(input_data.to_numpy(), dtype=torch.float32).unsqueeze(0).to(device)
-        outputs = model(input_tensor)
-
-        _, predicted = torch.max(outputs, 1)
-    
-    
-    print("실시간 예측 결과:", ["매수", "매도", "대기"][predicted.item()])
-    #print("실제 결과 : ", new_data['Target'])
-    return predicted.item()
+    except Exception as e:
+        print(f"\n에러 발생: {str(e)}")
+        raise e
