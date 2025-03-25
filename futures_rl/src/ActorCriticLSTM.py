@@ -15,7 +15,9 @@ class ActorCriticLSTM(nn.Module):
         
         # 액터 네트워크 (정책) - 포지션 방향
         self.actor_direction = nn.Sequential(
-            nn.Linear(hidden_dim, 64),
+            nn.Linear(hidden_dim, 128),
+            nn.ReLU(),
+            nn.Linear(128, 64),
             nn.ReLU(),
             nn.Linear(64, 1),
             nn.Tanh()  # -1 ~ 1 범위로 제한
@@ -26,7 +28,9 @@ class ActorCriticLSTM(nn.Module):
         
         # 크리틱 네트워크 (가치 함수)
         self.critic = nn.Sequential(
-            nn.Linear(hidden_dim, 64),
+            nn.Linear(hidden_dim, 128),
+            nn.ReLU(),
+            nn.Linear(128, 64),
             nn.ReLU(),
             nn.Linear(64, 1)
         )

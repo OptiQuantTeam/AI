@@ -21,8 +21,8 @@ class PPO:
         epochs=10,
         device="cuda" if torch.cuda.is_available() else "cpu"
     ):
-        #self.actor_critic = ActorCritic(state_dim, action_dim).to(device)
-        self.actor_critic = ActorCriticLSTM(state_dim, action_dim).to(device)
+        self.actor_critic = ActorCritic(state_dim, action_dim).to(device)
+        #self.actor_critic = ActorCriticLSTM(state_dim, action_dim, hidden_dim=128, lstm_layers=2).to(device)
         self.optimizer = optim.Adam([
             {'params': self.actor_critic.feature_extraction.parameters()},
             {'params': self.actor_critic.actor_direction.parameters()},

@@ -83,15 +83,15 @@ class FuturesEnv(gym.Env):
                 else:
                     reward = profit
                 '''
-                reward += - position_direction * (current_price - self.entry_price) / self.entry_price
+                reward += - position_direction * (current_price - self.entry_price) / self.entry_price * 0.01
             
             profit_rate = (self.balance - self.initial_balance) / self.initial_balance 
             self.returns_history.append(profit_rate * 100)   
             if self.balance < self.initial_balance * 0.7:
                 done = True
-                reward += -10000 - self.num * 10
+                reward += -10000 - self.num
                 self.liquidated = True
-            elif self.balance > self.initial_balance * 2:
+            elif self.balance > self.initial_balance * 1.5:
                 done = True
                 reward += 10000 - self.num
                 self.clear = True

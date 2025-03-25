@@ -45,7 +45,7 @@ def train(env, ppo_agent, num_episodes=1000, **kwargs):
                 episode_reward += reward
                 state = next_state
                 
-                if len(ppo_agent.memory) >= 512:
+                if len(ppo_agent.memory) >= 256:
                     update_count += 1
                     ppo_agent.update()
                 

@@ -10,14 +10,20 @@ class ActorCritic(nn.Module):
             nn.Linear(state_dim, 256),
             nn.ReLU(),
             nn.Linear(256, 128),
-            nn.ReLU()
+            nn.ReLU(),
+
+            
         )
         
         # 액터 네트워크 (정책) - 포지션 방향
         self.actor_direction = nn.Sequential(
             nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(64, 1),
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Linear(32, 16),
+            nn.ReLU(),
+            nn.Linear(16, 1),
             nn.Tanh()  # -1 ~ 1 범위로 제한
         )
         
