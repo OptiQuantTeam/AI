@@ -62,7 +62,7 @@ class FuturesEnv(gym.Env):
     def step(self, action):
         current_price = self.data.iloc[self.current_step]['Close']
         done = self.current_step >= len(self.data) - 1
-        reward = -1
+        reward = -self.num
         
 
         if action > 0:
@@ -83,17 +83,17 @@ class FuturesEnv(gym.Env):
                 else:
                     reward = profit
                 '''
-                reward += - position_direction * (current_price - self.entry_price) / self.entry_price * 0.01
+                reward += - position_direction * (current_price - self.entry_price) / self.entry_price
             
             profit_rate = (self.balance - self.initial_balance) / self.initial_balance 
             self.returns_history.append(profit_rate * 100)   
             if self.balance < self.initial_balance * 0.7:
                 done = True
-                reward += -10000 - self.num
+                #reward += -10000 - self.num
                 self.liquidated = True
             elif self.balance > self.initial_balance * 1.5:
                 done = True
-                reward += 10000 - self.num
+                #reward += 10000 - self.num
                 self.clear = True
             
             # 새로운 포지션 진입

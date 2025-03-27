@@ -8,18 +8,11 @@ import torch
 import sys
 
 if __name__ == "__main__":
-    
-
-    
-
-    
 
     env = FuturesEnv(path='/workspace/data/preprocess/BTCUSDT/BTCUSDT-1h.csv')
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
 
-    
-        
     while True: 
         print('학습 방법을 선택해주세요.')
         print('(1) 학습')

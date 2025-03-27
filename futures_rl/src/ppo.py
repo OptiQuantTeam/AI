@@ -153,18 +153,28 @@ class PPO:
                 #print(f"old_log_prob: {old_log_prob}")
                 # PPO 비율 계산
                 ratio = torch.exp(new_log_prob - old_log_prob)
-                #print( f"ratio: {ratio}")
+                
                 # 클리핑된 목적 함수
                 surr1 = ratio * advantage
                 surr2 = torch.clamp(ratio, 1-self.epsilon, 1+self.epsilon) * advantage
                 actor_loss = -torch.min(surr1, surr2).mean()
                 
-                # 가치 함수 손실
+                # 가치 함수 손실 (MSE 사용)
                 value = value.squeeze()
-                critic_loss = nn.CrossEntropyLoss()(value, return_)
+                critic_loss = nn.MSELoss()(value, return_)
+                
+                # 엔트로피 보너스 (탐색 촉진)
+                entropy = direction_dist.entropy().mean()
+                
+                # 거래 수수료 페널티
+                trading_fee = 0.0003  # 0.03% 수수료 가정
+                fee_penalty = trading_fee * torch.abs(action).mean()
+                
+                # 포트폴리오 변동성 페널티
+                volatility_penalty = 0.01 * torch.std(action)
                 
                 # 전체 손실
-                loss = actor_loss + 0.5 * critic_loss
+                loss = actor_loss + 0.5 * critic_loss - 0.01 * entropy + fee_penalty + volatility_penalty
                 
                 # 역전파 및 최적화
                 self.optimizer.zero_grad()
