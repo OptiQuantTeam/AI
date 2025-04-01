@@ -1,17 +1,18 @@
-from environment import FuturesEnv
 from ppo import PPO
+from ppo2 import PPO2
 from train import train
 from resume import resume
 from continue_train import continue_training
 from pathlib import Path
 import torch
-import sys
+import env
 
 if __name__ == "__main__":
 
-    env = FuturesEnv(path='/workspace/data/preprocess/BTCUSDT/BTCUSDT-1h.csv')
+    env = env.FuturesEnv2(path='/workspace/data/preprocess/BTCUSDT/BTCUSDT-1h.csv')
     state_dim = env.observation_space.shape[0]
-    action_dim = env.action_space.shape[0]
+    #action_dim = env.action_space.shape[0]
+    action_dim = env.action_space.n
 
     while True: 
         print('학습 방법을 선택해주세요.')

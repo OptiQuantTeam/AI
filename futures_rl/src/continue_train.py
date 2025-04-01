@@ -29,8 +29,10 @@ def continue_training(env, checkpoint_path, additional_episodes=1000):
         # 이전 학습 상태 확인
         model_name = checkpoint.get('model_name', 'ppo')
         state_dim = checkpoint.get('state_dim', env.observation_space.shape[0])
-        action_dim = checkpoint.get('action_dim', env.action_space.shape[0])
+        #action_dim = checkpoint.get('action_dim', env.action_space.shape[0])
+        action_dim = checkpoint.get('action_dim', env.action_space.n)
         gamma = checkpoint.get('gamma', 0.99)
+        checkpoint_term = checkpoint.get('checkpoint_term', 100)
         epsilon = checkpoint.get('epsilon', 0.2)
         epochs = checkpoint.get('epochs', 10)
         
@@ -91,7 +93,8 @@ def continue_training(env, checkpoint_path, additional_episodes=1000):
         new_rewards, new_returns, new_episode_returns = train(
             env, 
             ppo_agent, 
-            num_episodes=additional_episodes
+            num_episodes=additional_episodes,
+            checkpoint_term=checkpoint_term
         )
         
         # 학습 히스토리 통합

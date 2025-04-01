@@ -1,4 +1,4 @@
-from environment import FuturesEnv
+import env
 from ppo import PPO
 import datetime
 import json
@@ -36,6 +36,7 @@ def train(env, ppo_agent, num_episodes=1000, **kwargs):
             while True:
                 env.num += 1
                 action, value, log_prob = ppo_agent.select_action(state)
+                #print('action: ', action)
                 next_state, reward, done, info = env.step(action)
                 
                 
@@ -69,8 +70,10 @@ def train(env, ppo_agent, num_episodes=1000, **kwargs):
             if (episode + 1) % checkpoint_term == 0:
                 ppo_agent.checkpoint({
                     'model_name': ppo_agent.model_name,
-                    'state_dim': env.observation_space.shape[0],
-                    'action_dim': env.action_space.shape[0],
+                    'state_dim': ppo_agent.state_dim,
+                    #'action_dim': env.action_space.shape[0],
+                    'action_dim': ppo_agent.action_dim,   # discrete action space
+                    'checkpoint_term': checkpoint_term,
                     'gamma': ppo_agent.gamma,
                     'epsilon': ppo_agent.epsilon,
                     'epochs': ppo_agent.epochs,
@@ -99,8 +102,10 @@ def train(env, ppo_agent, num_episodes=1000, **kwargs):
             # 체크포인트 데이터 준비
             checkpoint_data = {
                 'model_name': ppo_agent.model_name,
-                'state_dim': env.observation_space.shape[0],
-                'action_dim': env.action_space.shape[0],
+                'state_dim': ppo_agent.state_dim,
+                #'action_dim': env.action_space.shape[0],
+                'action_dim': ppo_agent.action_dim,   # discrete action space
+                'checkpoint_term': checkpoint_term,
                 'gamma': ppo_agent.gamma,
                 'epsilon': ppo_agent.epsilon,
                 'epochs': ppo_agent.epochs,
@@ -157,7 +162,7 @@ def train(env, ppo_agent, num_episodes=1000, **kwargs):
 
 if __name__ == "__main__":
     # 환경 생성
-    env = FuturesEnv(path='/workspace/data/preprocess/BTCUSDT/BTCUSDT-1h.csv')
+    env = env.FuturesEnv2(path='/workspace/data/preprocess/BTCUSDT/BTCUSDT-1h.csv')
     
     # PPO 에이전트 생성
     state_dim = env.observation_space.shape[0]

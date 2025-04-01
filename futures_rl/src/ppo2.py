@@ -8,7 +8,7 @@ import datetime
 from ActorCritic import ActorCritic
 from ActorCriticLSTM import ActorCriticLSTM
 
-class PPO:
+class PPO2:
     def __init__(
         self, 
         state_dim, 
@@ -21,8 +21,6 @@ class PPO:
         epochs=10,
         device="cuda" if torch.cuda.is_available() else "cpu"
     ):
-        self.state_dim = state_dim
-        self.action_dim = action_dim
         self.actor_critic = ActorCritic(state_dim, action_dim).to(device)
         #self.actor_critic = ActorCriticLSTM(state_dim, action_dim, hidden_dim=128, lstm_layers=2).to(device)
         self.optimizer = optim.Adam([
@@ -77,12 +75,12 @@ class PPO:
         
         for transition in self.memory:
             state, action, reward, next_state, log_prob, value, done = transition
-            state_batch.append(state)
+            state_batch.append(state[-1])
             action_batch.append(action)
             reward_batch.append(reward)
-            next_state_batch.append(next_state)
+            next_state_batch.append(next_state[-1])
             log_prob_batch.append(log_prob)
-            value_batch.append(value)
+            value_batch.append(value[-1])
             done_batch.append(done)
         
         # 텐서로 변환
@@ -100,7 +98,7 @@ class PPO:
         gae = 0
         
         with torch.no_grad():
-            next_value = self.actor_critic(next_state_batch)[2]  # value는 5번째 반환값
+            next_value = self.actor_critic(next_state_batch)[2]  # value는 2번째 반환값
             next_value = next_value.squeeze()
             
             for r, v, done, next_v in zip(
@@ -118,6 +116,7 @@ class PPO:
                 
                 returns.insert(0, gae + v)
                 advantages.insert(0, gae)
+                print(f"gae: {gae}, v: {v}, next_v: {next_v}, r: {r}")
         
         advantages = torch.FloatTensor(advantages).to(self.device)
         returns = torch.FloatTensor(returns).to(self.device)

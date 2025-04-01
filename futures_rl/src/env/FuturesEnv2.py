@@ -6,16 +6,16 @@ from preprocess import preprocess_data
 
 
 # position constant
-LONG = 0
-SHORT = 1
-FLAT = 2
+LONG = 1
+SHORT = -1
+FLAT = 0
 
 # action constant
-BUY = 0
-SELL = 1
-HOLD = 2
+BUY = 1
+SELL = -1
+HOLD = 0
 
-class FuturesEnv(gym.Env):
+class FuturesEnv2(gym.Env):
     def __init__(self, path=None):
         self.path = path
         self.initial_balance = 100000000
@@ -26,8 +26,8 @@ class FuturesEnv(gym.Env):
         self.load_data()
         self.returns_history = []
         self.max_steps = 1000
-        self.action_space = spaces.Box(low=-1.0, high=1.0, dtype=np.float32)
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(6,), dtype=np.float32)
+        self.action_space = spaces.Discrete(3, start=-1)
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(5,), dtype=np.float32)
 
 
     def load_data(self):
@@ -37,7 +37,7 @@ class FuturesEnv(gym.Env):
     
     def reset(self):
         # 전체 데이터 길이에서 랜덤한 시작 위치 선택
-        self.current_step = np.random.randint(0, len(self.data) - self.max_steps)
+        self.current_step = np.random.randint(36, len(self.data) - self.max_steps)
         # 초기 상태 설정
         self.balance = self.initial_balance
         self.position = FLAT
@@ -56,26 +56,44 @@ class FuturesEnv(gym.Env):
         return self._next_observation()
     
     def _next_observation(self):
-        return np.array([self.data.iloc[self.current_step]['Open'], self.data.iloc[self.current_step]['Close'], self.data.iloc[self.current_step]['Volume'], 
-                         self.data.iloc[self.current_step]['CHG'], self.data.iloc[self.current_step]['stocRSI'], self.data.iloc[self.current_step]['MACD']], dtype=np.float32)
+
+        def get_composite_change_score(data):
+            short_term = np.mean(np.diff(data, n=1))
+
+            mid_term = np.mean(np.diff(data, n=5))
+
+            long_term = np.mean(np.diff(data, n=21))
+            
+            weights = [0.5, 0.3, 0.2]
+            conposite_score = np.average([short_term, mid_term, long_term], weights=weights)
+            return np.tanh(conposite_score)
+        
+
+        state = np.array([self.data.iloc[self.current_step]['Close'], get_composite_change_score([self.data.iloc[self.current_step-35:self.current_step+1]['Volume']]),
+                          get_composite_change_score([self.data.iloc[self.current_step-35:self.current_step+1]['CHG']]), get_composite_change_score([self.data.iloc[self.current_step-35:self.current_step+1]['stocRSI']]), 
+                          get_composite_change_score([self.data.iloc[self.current_step-35:self.current_step+1]['MACD']])], dtype=np.float32)
+        return state
         
     def step(self, action):
         current_price = self.data.iloc[self.current_step]['Close']
         done = self.current_step >= len(self.data) - 1
-        reward = -self.num
+        profit = 0
+        reward = 0
+        action = action[-1]
+        #reward = -self.num
         
 
-        if action > 0:
-            position_direction = 1
-        elif action < 0:
-            position_direction = -1
+        if action > 0.3:
+            position_direction = LONG
+        elif action < -0.3:
+            position_direction = SHORT
         else:
-            position_direction = 0
+            position_direction = FLAT
 
         if self.position != position_direction:
             # 기존 포지션 청산
-            if self.position != 0:
-                profit = -position_direction * (current_price - self.entry_price) * self.size
+            if self.position != HOLD:
+                profit = self.position * (current_price - self.entry_price) * self.size
                 self.balance += profit
                 '''
                 if self.position_size != 0 and -position_direction * (current_price - self.entry_price) / self.entry_price > 0.7:
@@ -83,10 +101,18 @@ class FuturesEnv(gym.Env):
                 else:
                     reward = profit
                 '''
-                reward += - position_direction * (current_price - self.entry_price) / self.entry_price
+                reward = self.position * (current_price - self.entry_price) / (self.entry_price * self.num)
             
             profit_rate = (self.balance - self.initial_balance) / self.initial_balance 
             self.returns_history.append(profit_rate * 100)   
+            
+
+            if profit / self.entry_price < -0.1:
+                reward += np.exp((profit + 0.1)) - current_price
+            elif profit / self.entry_price > 0.2:
+                reward += np.exp(-(profit - 0.2)) + current_price
+
+                
             if self.balance < self.initial_balance * 0.7:
                 done = True
                 #reward += -10000 - self.num
@@ -96,10 +122,13 @@ class FuturesEnv(gym.Env):
                 #reward += 10000 - self.num
                 self.clear = True
             
+            
+            
             # 새로운 포지션 진입
-            if position_direction != 0 and not done:
+            if position_direction != FLAT and not done:
                 # 진입 비용 계산
-                trade_ratio = abs(action)
+                #trade_ratio = abs(action)
+                trade_ratio = 1     # 전량
                 position_size = self.balance * self.leverage * trade_ratio / current_price
                 entry_cost = position_size * current_price * self.trade_fee
                 self.balance -= entry_cost
