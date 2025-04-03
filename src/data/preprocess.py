@@ -21,4 +21,4 @@ def preprocess_historical(ticker='BTCUSDT', interval='1d'):
     return data
 
 if __name__ == '__main__':
-    preprocess_historical(interval='1d')
+    preprocess_historical(interval='5m')

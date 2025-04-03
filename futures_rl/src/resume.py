@@ -19,7 +19,8 @@ def resume(env, checkpoint_path, num_episodes=2000):
         # 이전 학습 상태 확인
         model_name = checkpoint.get('model_name', 'ppo')
         state_dim = checkpoint.get('state_dim', env.observation_space.shape[0])
-        action_dim = checkpoint.get('action_dim', env.action_space.shape[0])
+        #action_dim = checkpoint.get('action_dim', env.action_space.shape[0])
+        action_dim = checkpoint.get('action_dim', env.action_space.n)
         gamma = checkpoint.get('gamma', 0.99)
         epsilon = checkpoint.get('epsilon', 0.2)
         epochs = checkpoint.get('epochs', 10)
@@ -60,6 +61,7 @@ def resume(env, checkpoint_path, num_episodes=2000):
         previous_rewards = checkpoint.get('rewards_history', [])
         previous_returns = checkpoint.get('returns_history', [])
         previous_episode_returns = checkpoint.get('all_episode_returns', [])
+        previous_episode_results = checkpoint.get('episode_results', [0])
         
         print(f"이전 학습 에피소드 수: {len(previous_episode_returns)}")
         print(f"이전 최고 수익률: {max(previous_episode_returns) if previous_episode_returns else 'N/A'}")
@@ -87,7 +89,8 @@ def resume(env, checkpoint_path, num_episodes=2000):
             env, 
             ppo_agent, 
             num_episodes=total_episodes,
-            start_episode=current_episode
+            start_episode=current_episode,
+            episode_results=previous_episode_results
         )
         
         # 이전 히스토리와 새로운 히스토리 합치기

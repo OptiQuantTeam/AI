@@ -8,12 +8,13 @@ def train(env, ppo_agent, num_episodes=1000, **kwargs):
     episode_rewards = []
     all_episode_returns = []
     episode_start_positions = []
-    episode_results = [0]
+    #episode_results = [0]
 
     is_normal_exit = False
     
     episode_range = range(kwargs['start_episode'], num_episodes) if 'start_episode' in kwargs else range(num_episodes)
     checkpoint_term = kwargs['checkpoint_term'] if 'checkpoint_term' in kwargs else 100
+    episode_results = kwargs['episode_results'] if 'episode_results' in kwargs else [0]
 
     
     start_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
@@ -81,6 +82,7 @@ def train(env, ppo_agent, num_episodes=1000, **kwargs):
                     'optimizer_state_dict': ppo_agent.optimizer.state_dict(),
                     'rewards_history': episode_rewards,
                     'returns_history': env.returns_history,
+                    'episode_results': episode_results,
                     'all_episode_returns': all_episode_returns,
                     'episode_start_positions': episode_start_positions,
                     'current_episode': episode + 1,
@@ -113,6 +115,7 @@ def train(env, ppo_agent, num_episodes=1000, **kwargs):
                 'optimizer_state_dict': ppo_agent.optimizer.state_dict(),
                 'rewards_history': episode_rewards if 'episode_rewards' in locals() else [],
                 'returns_history': env.returns_history if hasattr(env, 'returns_history') else [],
+                'episode_results': episode_results if 'episode_results' in locals() else [],
                 'all_episode_returns': all_episode_returns if 'all_episode_returns' in locals() else [],
                 'episode_start_positions': episode_start_positions if 'episode_start_positions' in locals() else [],
                 'current_episode': episode + 1 if 'episode' in locals() else 0,

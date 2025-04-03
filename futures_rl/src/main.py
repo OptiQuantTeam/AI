@@ -9,7 +9,7 @@ import env
 
 if __name__ == "__main__":
 
-    env = env.FuturesEnv2(path='/workspace/data/preprocess/BTCUSDT/BTCUSDT-1h.csv')
+    env = env.FuturesEnv2(path='/workspace/data/preprocess/BTCUSDT/BTCUSDT-5m.csv')
     state_dim = env.observation_space.shape[0]
     #action_dim = env.action_space.shape[0]
     action_dim = env.action_space.n
