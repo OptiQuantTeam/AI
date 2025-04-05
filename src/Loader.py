@@ -5,8 +5,8 @@ import env
 from Logger import Logger, LogLevel
 
 class Loader():
-    def __init__(self, further=None):
-        self.env = env.FuturesEnv2(path='data/preprocess/BTCUSDT/BTCUSDT-5m.csv')
+    def __init__(self, env_path, further=None):
+        self.env = env.FuturesEnv2(path=env_path)
         self.agent, self.model_info = self._set_model() if further is None else self._load_model(further)
         console_level, file_level = self._set_log_level()
         self.logger = Logger(self.agent.model_name, f'logs/{self.agent.model_name}.log', console_level=console_level, file_level=file_level)

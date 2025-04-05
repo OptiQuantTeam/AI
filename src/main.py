@@ -3,6 +3,7 @@ import torch
 from Loader import Loader
 
 if __name__ == "__main__":
+    env_path = 'data/preprocess/BTCUSDT/BTCUSDT-5m.csv'
     
     while True: 
         print('학습 방법을 선택해주세요.')
@@ -15,17 +16,17 @@ if __name__ == "__main__":
         choice = int(input('선택: '))
         
         if choice == 1:
-            loader = Loader()
+            loader = Loader(env_path)
             train(loader.env, loader.agent, loader.num_episodes, loader.model_info, logger=loader.logger)
             break
 
         elif choice == 2:
-            loader = Loader(further=False)
+            loader = Loader(env_path, further=False)
             train(loader.env, loader.agent, loader.num_episodes, loader.model_info, logger=loader.logger)
             break
 
         elif choice == 3:
-            loader = Loader(further=True)
+            loader = Loader(env_path, further=True)
             train(loader.env, loader.agent, loader.num_episodes, loader.model_info, logger=loader.logger)
             break
 
