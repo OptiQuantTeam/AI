@@ -137,8 +137,7 @@ def train(env, ppo_agent, num_episodes=1000, model_info=None, logger=None, **kwa
         result = {
             'total_episodes': len(all_episode_returns),
             'completed_episodes': sum(episode_results),
-            'win_rate': sum(episode_results) / len(episode_results) if episode_results else 0,
-            'total_steps': env.num,
+            'win_rate': sum(episode_results) / len(episode_results) if episode_results else 0
         }
         logger.render_training_result(result=result)
     except KeyboardInterrupt:

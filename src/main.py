@@ -3,7 +3,7 @@ import torch
 from Loader import Loader
 
 if __name__ == "__main__":
-
+    
     while True: 
         print('학습 방법을 선택해주세요.')
         print('(1) 학습')
@@ -15,7 +15,6 @@ if __name__ == "__main__":
         choice = int(input('선택: '))
         
         if choice == 1:
-
             loader = Loader()
             train(loader.env, loader.agent, loader.num_episodes, loader.model_info, logger=loader.logger)
             break

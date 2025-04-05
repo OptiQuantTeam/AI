@@ -11,13 +11,13 @@ class LogLevel(Enum):
     CRITICAL = logging.CRITICAL
 
 class Logger:
-    def __init__(self, model_name, log_file_path, log_level=LogLevel.INFO):
+    def __init__(self, model_name, log_file_path, console_level=LogLevel.ERROR, file_level=LogLevel.INFO):
         self.model_name = model_name
         self.log_file_path = log_file_path
         
         # 로거 설정
         self.logger = logging.getLogger(f"{model_name}")
-        self.logger.setLevel(log_level.value)
+        self.logger.setLevel(min(console_level.value, file_level.value))
         
         # 파일 핸들러 설정
         self.file_handler = RotatingFileHandler(
@@ -26,11 +26,11 @@ class Logger:
             backupCount=20,
             encoding='utf-8'
         )
-        self.file_handler.setLevel(log_level.value)
+        self.file_handler.setLevel(file_level.value)
         
         # 콘솔 핸들러 설정
         self.console_handler = logging.StreamHandler()
-        self.console_handler.setLevel(log_level.value)
+        self.console_handler.setLevel(console_level.value)
         
         # 포매터 설정
         self.formatter = logging.Formatter('[%(asctime)s] :: %(message)s', 
@@ -92,7 +92,7 @@ class Logger:
 
     def render_episode_start(self, episode):
         self.logger.error('========================================================')
-        self.logger.error(f'에피소드 {episode} 시작')
+        self.logger.error(f'에피소드 {episode}')
 
     def render(self, message):
         self.logger.info(message)
@@ -106,7 +106,6 @@ class Logger:
         self.logger.error(f' 총 에피소드: {result.get("total_episodes", "N/A")}')
         self.logger.error(f' 완료된 에피소드: {result.get("completed_episodes", "N/A")}')
         self.logger.error(f' 승률: {result.get("win_rate", "N/A"):.2%}')
-        self.logger.error(f' 총 스텝 수: {result.get("total_steps", "N/A")}')
         self.logger.error('========================================================')
         self.logger.error(f' ')
 

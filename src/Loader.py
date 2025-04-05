@@ -8,7 +8,8 @@ class Loader():
     def __init__(self, further=None):
         self.env = env.FuturesEnv2(path='data/preprocess/BTCUSDT/BTCUSDT-5m.csv')
         self.agent, self.model_info = self._set_model() if further is None else self._load_model(further)
-        self.logger = Logger(self.agent.model_name, f'logs/{self.agent.model_name}.log', log_level=LogLevel.ERROR)
+        console_level, file_level = self._set_log_level()
+        self.logger = Logger(self.agent.model_name, f'logs/{self.agent.model_name}.log', console_level=console_level, file_level=file_level)
 
         if self.agent is None:
             self.logger.error("모델을 로드할 수 없습니다.")
@@ -16,6 +17,28 @@ class Loader():
         # 모델 정보 출력
         self.logger.render_model_info(self.model_info)
         input('학습을 시작합니다 [Enter]')
+
+    def _set_log_level(self):
+        # 로그 레벨 매핑 딕셔너리
+        LEVEL_MAP = {
+            0: LogLevel.DEBUG,
+            1: LogLevel.INFO,
+            2: LogLevel.WARNING,
+            3: LogLevel.ERROR,
+            4: LogLevel.CRITICAL
+        }
+        
+        def get_log_level(prompt, default=1):
+            try:
+                level = int(input(prompt) or str(default))
+                return LEVEL_MAP.get(level, LogLevel.INFO)
+            except ValueError:
+                return LogLevel.INFO
+        
+        console_level = get_log_level('콘솔 로그 레벨을 선택해주세요. [0:DEBUG, 1:INFO, 2:WARNING, 3:ERROR, 4:CRITICAL] [default: 1]: ')
+        file_level = get_log_level('파일 로그 레벨을 선택해주세요. [0:DEBUG, 1:INFO, 2:WARNING, 3:ERROR, 4:CRITICAL] [default: 1]: ')
+        
+        return console_level, file_level
 
     def __select_model(self, model_path):
         models_dir = Path(model_path) 
