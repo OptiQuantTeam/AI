@@ -6,7 +6,7 @@ from Logger import Logger, LogLevel
 
 class Loader():
     def __init__(self, further=None):
-        self.env = env.FuturesEnv2(path='/workspace/data/preprocess/BTCUSDT/BTCUSDT-5m.csv')
+        self.env = env.FuturesEnv2(path='workspace/data/preprocess/BTCUSDT/BTCUSDT-5m.csv')
         self.agent, self.model_info = self._set_model() if further is None else self._load_model(further)
         self.logger = Logger(self.agent.model_name, f'workspace/logs/{self.agent.model_name}.log', log_level=LogLevel.ERROR)
 

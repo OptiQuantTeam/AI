@@ -367,7 +367,7 @@ def train(env, ppo_agent, num_episodes=1000, model_info=None, logger=None, **kwa
 
 if __name__ == "__main__":
     # 새로운 학습 시작
-    env = env.FuturesEnv2(path='/workspace/data/preprocess/BTCUSDT/BTCUSDT-1h.csv')
+    env = env.FuturesEnv2(path='workspace/data/preprocess/BTCUSDT/BTCUSDT-1h.csv')
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
     
