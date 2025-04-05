@@ -9,7 +9,7 @@ from Logger import Logger
 
 def train(env, ppo_agent, num_episodes=1000, model_info=None, logger=None, **kwargs):
     if logger is None:
-        logger = Logger(ppo_agent.model_name, f'futures_rl/logs/{ppo_agent.model_name}.log')
+        logger = Logger(ppo_agent.model_name, f'workspace/logs/{ppo_agent.model_name}.log')
     env.logger = logger
     
     logger.render_training_start(time=(datetime.datetime.now() + datetime.timedelta(hours=9)).strftime('%Y-%m-%d_%H-%M-%S'))
@@ -129,7 +129,7 @@ def train(env, ppo_agent, num_episodes=1000, model_info=None, logger=None, **kwa
                         'current_session_episodes': episode + 1 - model_info.get('start_episode', 0),
                         'training_sessions': model_info.get('training_sessions', 0) + 1
                     }
-                }, f'futures_rl/checkpoints/{ppo_agent.model_name}_{(datetime.datetime.now() + datetime.timedelta(hours=9)).strftime("%Y%m%d_%H:%M:%S")}_ep_{episode + 1}.pth')
+                }, f'workspace/checkpoints/{ppo_agent.model_name}_{(datetime.datetime.now() + datetime.timedelta(hours=9)).strftime("%Y%m%d_%H:%M:%S")}_ep_{episode + 1}.pth')
                 logger.render(f" <체크포인트 저장됨: {episode + 1}>")
         
         is_normal_exit = True
@@ -208,7 +208,7 @@ def train(env, ppo_agent, num_episodes=1000, model_info=None, logger=None, **kwa
                 'session_info': {
                     'session_type': 'new',
                     'session_time': time,
-                    'log_file': f'futures_rl/logs/{ppo_agent.model_name}.log'
+                    'log_file': f'workspace/logs/{ppo_agent.model_name}.log'
                 }
             }
             
@@ -332,20 +332,20 @@ def train(env, ppo_agent, num_episodes=1000, model_info=None, logger=None, **kwa
                     'session_info': {
                         'session_type': 'new',
                         'session_time': time,
-                        'log_file': f'futures_rl/logs/{ppo_agent.model_name}.log'
+                        'log_file': f'workspace/logs/{ppo_agent.model_name}.log'
                     }
                 }
 
             
             if is_normal_exit:
-                ppo_agent.save_model(checkpoint_data, f'futures_rl/models/{ppo_agent.model_name}_{time}.pth')
-                with open(f'futures_rl/json/{ppo_agent.model_name}_metadata_{time}.json', 'w') as f:
+                ppo_agent.save_model(checkpoint_data, f'workspace/models/{ppo_agent.model_name}_{time}.pth')
+                with open(f'workspace/json/{ppo_agent.model_name}_metadata_{time}.json', 'w') as f:
                     json.dump(metadata, f, indent=4)
-                plot_cumulative_result(episode_results, f'futures_rl/results/{ppo_agent.model_name}_result_{time}.png')
+                plot_cumulative_result(episode_results, f'workspace/results/{ppo_agent.model_name}_result_{time}.png')
                 
             else:
-                ppo_agent.save_model(checkpoint_data, f'futures_rl/checkpoints/{ppo_agent.model_name}_{time}.pth')
-                with open(f'futures_rl/json/{ppo_agent.model_name}_checkpoint_{time}.json', 'w') as f:
+                ppo_agent.save_model(checkpoint_data, f'workspace/checkpoints/{ppo_agent.model_name}_{time}.pth')
+                with open(f'workspace/json/{ppo_agent.model_name}_checkpoint_{time}.json', 'w') as f:
                     json.dump(metadata, f, indent=4)
 
                 
@@ -385,4 +385,3 @@ if __name__ == "__main__":
     results = train(env, ppo_agent, num_episodes=2000)
     
     # 또는 학습 재개
-    # results = resume_training(env, 'futures_rl/checkpoints/checkpoint.pth', num_episodes=2000)

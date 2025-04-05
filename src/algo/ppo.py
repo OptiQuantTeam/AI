@@ -220,7 +220,7 @@ class PPO:
         torch.save(data, path)
     
     def load_model(self):
-        self.actor_critic.load_state_dict(torch.load(f'futures_rl/models/{self.model_name}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.pth'))
+        self.actor_critic.load_state_dict(torch.load(f'workspace/models/{self.model_name}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.pth'))
     
     def load_checkpoint(self, path):
         return torch.load(path)
