@@ -17,7 +17,7 @@ HOLD = 0
 
 class FuturesEnv2(gym.Env):
     def __init__(self, path=None, logger=None):
-        self.logger = logger if logger else Logger('FuturesEnv2', 'workspace/logs/FuturesEnv2.log')
+        self.logger = logger if logger else Logger('FuturesEnv2', 'logs/FuturesEnv2.log')
         self.path = path
         self.initial_balance = 100000000
         self.actions = ['LONG', 'SHORT', 'FLAT']

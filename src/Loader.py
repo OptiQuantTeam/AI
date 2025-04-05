@@ -6,9 +6,9 @@ from Logger import Logger, LogLevel
 
 class Loader():
     def __init__(self, further=None):
-        self.env = env.FuturesEnv2(path='workspace/data/preprocess/BTCUSDT/BTCUSDT-5m.csv')
+        self.env = env.FuturesEnv2(path='data/preprocess/BTCUSDT/BTCUSDT-5m.csv')
         self.agent, self.model_info = self._set_model() if further is None else self._load_model(further)
-        self.logger = Logger(self.agent.model_name, f'workspace/logs/{self.agent.model_name}.log', log_level=LogLevel.ERROR)
+        self.logger = Logger(self.agent.model_name, f'logs/{self.agent.model_name}.log', log_level=LogLevel.ERROR)
 
         if self.agent is None:
             self.logger.error("모델을 로드할 수 없습니다.")
@@ -47,7 +47,7 @@ class Loader():
 
 
     def _load_model(self, further):
-        model_path = self.__select_model('workspace/models' if further else 'workspace/checkpoints')
+        model_path = self.__select_model('models' if further else 'checkpoints')
         if model_path is None:
             return None, None
         

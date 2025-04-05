@@ -9,7 +9,7 @@ from Logger import Logger
 
 def train(env, ppo_agent, num_episodes=1000, model_info=None, logger=None, **kwargs):
     if logger is None:
-        logger = Logger(ppo_agent.model_name, f'workspace/logs/{ppo_agent.model_name}.log')
+        logger = Logger(ppo_agent.model_name, f'logs/{ppo_agent.model_name}.log')
     env.logger = logger
     
     logger.render_training_start(time=(datetime.datetime.now() + datetime.timedelta(hours=9)).strftime('%Y-%m-%d_%H-%M-%S'))
@@ -129,7 +129,7 @@ def train(env, ppo_agent, num_episodes=1000, model_info=None, logger=None, **kwa
                         'current_session_episodes': episode + 1 - model_info.get('start_episode', 0),
                         'training_sessions': model_info.get('training_sessions', 0) + 1
                     }
-                }, f'workspace/checkpoints/{ppo_agent.model_name}_{(datetime.datetime.now() + datetime.timedelta(hours=9)).strftime("%Y%m%d_%H:%M:%S")}_ep_{episode + 1}.pth')
+                }, f'checkpoints/{ppo_agent.model_name}_{(datetime.datetime.now() + datetime.timedelta(hours=9)).strftime("%Y%m%d_%H:%M:%S")}_ep_{episode + 1}.pth')
                 logger.render(f" <체크포인트 저장됨: {episode + 1}>")
         
         is_normal_exit = True
@@ -208,7 +208,7 @@ def train(env, ppo_agent, num_episodes=1000, model_info=None, logger=None, **kwa
                 'session_info': {
                     'session_type': 'new',
                     'session_time': time,
-                    'log_file': f'workspace/logs/{ppo_agent.model_name}.log'
+                    'log_file': f'logs/{ppo_agent.model_name}.log'
                 }
             }
             
@@ -332,20 +332,20 @@ def train(env, ppo_agent, num_episodes=1000, model_info=None, logger=None, **kwa
                     'session_info': {
                         'session_type': 'new',
                         'session_time': time,
-                        'log_file': f'workspace/logs/{ppo_agent.model_name}.log'
+                        'log_file': f'logs/{ppo_agent.model_name}.log'
                     }
                 }
 
             
             if is_normal_exit:
-                ppo_agent.save_model(checkpoint_data, f'workspace/models/{ppo_agent.model_name}_{time}.pth')
-                with open(f'workspace/json/{ppo_agent.model_name}_metadata_{time}.json', 'w') as f:
+                ppo_agent.save_model(checkpoint_data, f'models/{ppo_agent.model_name}_{time}.pth')
+                with open(f'json/{ppo_agent.model_name}_metadata_{time}.json', 'w') as f:
                     json.dump(metadata, f, indent=4)
-                plot_cumulative_result(episode_results, f'workspace/results/{ppo_agent.model_name}_result_{time}.png')
+                plot_cumulative_result(episode_results, f'results/{ppo_agent.model_name}_result_{time}.png')
                 
             else:
-                ppo_agent.save_model(checkpoint_data, f'workspace/checkpoints/{ppo_agent.model_name}_{time}.pth')
-                with open(f'workspace/json/{ppo_agent.model_name}_checkpoint_{time}.json', 'w') as f:
+                ppo_agent.save_model(checkpoint_data, f'checkpoints/{ppo_agent.model_name}_{time}.pth')
+                with open(f'json/{ppo_agent.model_name}_checkpoint_{time}.json', 'w') as f:
                     json.dump(metadata, f, indent=4)
 
                 
@@ -367,7 +367,7 @@ def train(env, ppo_agent, num_episodes=1000, model_info=None, logger=None, **kwa
 
 if __name__ == "__main__":
     # 새로운 학습 시작
-    env = env.FuturesEnv2(path='workspace/data/preprocess/BTCUSDT/BTCUSDT-1h.csv')
+    env = env.FuturesEnv2(path='data/preprocess/BTCUSDT/BTCUSDT-1h.csv')
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
     

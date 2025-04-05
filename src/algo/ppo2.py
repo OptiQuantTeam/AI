@@ -5,7 +5,7 @@ from torch.distributions import Normal
 import numpy as np
 from collections import deque
 import datetime
-import nn
+import ac
 
 class PPO2:
     def __init__(
@@ -20,7 +20,7 @@ class PPO2:
         epochs=10,
         device="cuda" if torch.cuda.is_available() else "cpu"
     ):
-        self.actor_critic = nn.ActorCritic(state_dim, action_dim).to(device)
+        self.actor_critic = ac.ActorCritic(state_dim, action_dim).to(device)
         #self.actor_critic = ActorCriticLSTM(state_dim, action_dim, hidden_dim=128, lstm_layers=2).to(device)
         self.optimizer = optim.Adam([
             {'params': self.actor_critic.feature_extraction.parameters()},
@@ -201,7 +201,7 @@ class PPO2:
         torch.save(data, path)
     
     def load_model(self):
-        self.actor_critic.load_state_dict(torch.load(f'workspace/models/{self.model_name}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.pth'))
+        self.actor_critic.load_state_dict(torch.load(f'models/{self.model_name}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.pth'))
     
     def load_checkpoint(self, path):
         return torch.load(path)
