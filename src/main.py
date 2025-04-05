@@ -1,22 +1,39 @@
+from train import train
 import torch
+from Loader import Loader
 
-from models.ML import LSTM, predict, create_targets
-from data import getCurrentData
+if __name__ == "__main__":
 
+    while True: 
+        print('학습 방법을 선택해주세요.')
+        print('(1) 학습')
+        print('(2) 재개')
+        print('(3) 추가 학습')
+        print('(4) 디바이스 확인')
+        print('(5) 종료')
+        
+        choice = int(input('선택: '))
+        
+        if choice == 1:
 
-# Model의 하이퍼파라미터 및 데이터 설정
-input_size = 6  # 예: OHLCV + RSI + MACD + EMA
-hidden_size = 64
-num_layers = 2
-output_size = 3  # 매수, 매도, 대기
+            loader = Loader()
+            train(loader.env, loader.agent, loader.num_episodes, loader.model_info, logger=loader.logger)
+            break
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        elif choice == 2:
+            loader = Loader(further=False)
+            train(loader.env, loader.agent, loader.num_episodes, loader.model_info, logger=loader.logger)
+            break
 
-model = LSTM(input_size=input_size, hidden_size=hidden_size, num_layers=num_layers, output_size=output_size)
-model.load_state_dict(torch.load('LSTM-20250122.pt'))
+        elif choice == 3:
+            loader = Loader(further=True)
+            train(loader.env, loader.agent, loader.num_episodes, loader.model_info, logger=loader.logger)
+            break
 
-new_data = getCurrentData("BTCUSDT", "1h", limit=12)
+        elif choice == 4:
+            print("\n현재 사용 가능한 Device : ", "cuda\n" if torch.cuda.is_available() else "cpu\n")
 
+        elif choice == 5:
+            print("\n프로그램을 종료합니다.\n")
+            exit()
 
-side = predict(model, new_data, device)
-print(side)

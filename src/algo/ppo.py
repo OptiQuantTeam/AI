@@ -5,8 +5,7 @@ from torch.distributions import Normal
 import numpy as np
 from collections import deque
 import datetime
-from ActorCritic import ActorCritic
-from ActorCriticLSTM import ActorCriticLSTM
+import nn
 
 class PPO:
     def __init__(
@@ -19,11 +18,13 @@ class PPO:
         gamma=0.99,
         epsilon=0.2,
         epochs=10,
-        device="cuda" if torch.cuda.is_available() else "cpu"
+        device="cuda" if torch.cuda.is_available() else "cpu",
+        curriculum_threshold=0.6,  # 목표 달성 임계값
+        curriculum_factor=0.95,    # 난이도 조정 계수
     ):
         self.state_dim = state_dim
         self.action_dim = action_dim
-        self.actor_critic = ActorCritic(state_dim, action_dim).to(device)
+        self.actor_critic = nn.ActorCritic(state_dim, action_dim).to(device)
         #self.actor_critic = ActorCriticLSTM(state_dim, action_dim, hidden_dim=128, lstm_layers=2).to(device)
         self.optimizer = optim.Adam([
             {'params': self.actor_critic.feature_extraction.parameters()},
@@ -38,6 +39,9 @@ class PPO:
         self.device = device
         self.model_name = model_name
         self.memory = deque()
+        self.curriculum_threshold = curriculum_threshold
+        self.curriculum_factor = curriculum_factor
+        self.current_difficulty = 1.0
         
     def select_action(self, state):
         state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
@@ -65,7 +69,20 @@ class PPO:
     def store_transition(self, transition):
         self.memory.append(transition)
     
-    def update(self, batch_size=64):
+    def update(self, batch_size=64, success_rate=0.0):
+        # 커리큘럼 학습: 성공률에 따른 난이도 조정
+        if success_rate > self.curriculum_threshold:
+            self.current_difficulty *= self.curriculum_factor  # 난이도 증가
+        else:
+            self.current_difficulty = min(1.0, self.current_difficulty / self.curriculum_factor)  # 난이도 감소
+        
+        # 난이도에 따른 리워드 스케일링
+        reward_batch = []
+        for transition in self.memory:
+            state, action, reward, next_state, log_prob, value, done = transition
+            scaled_reward = reward * self.current_difficulty  # 난이도에 따른 리워드 조정
+            reward_batch.append(scaled_reward)
+        
         # 메모리에서 데이터 추출
         state_batch = []
         action_batch = []
@@ -178,13 +195,13 @@ class PPO:
                 # 전체 손실 함수 조합
                 loss = (
                     actor_loss +
-                    0.5 * critic_loss +
+                    0.5 * critic_loss * self.current_difficulty +  # 난이도에 따른 critic 손실 조정
                     entropy_loss +
                     std_loss +
-                    fee_penalty +
-                    position_change_penalty +
-                    max_drawdown_penalty +
-                    volatility_penalty
+                    fee_penalty * self.current_difficulty +  # 난이도에 따른 페널티 조정
+                    position_change_penalty * self.current_difficulty +
+                    max_drawdown_penalty * self.current_difficulty +
+                    volatility_penalty * self.current_difficulty
                 )
                 
                 # 역전파 및 최적화

@@ -3,7 +3,7 @@ import pandas as pd
 import gym
 from gym import spaces
 from preprocess import preprocess_data
-
+from Logger import Logger
 
 # position constant
 LONG = 1
@@ -16,7 +16,8 @@ SELL = -1
 HOLD = 0
 
 class FuturesEnv2(gym.Env):
-    def __init__(self, path=None):
+    def __init__(self, path=None, logger=None):
+        self.logger = logger if logger else Logger('FuturesEnv2', 'futures_rl/logs/FuturesEnv2.log')
         self.path = path
         self.initial_balance = 100000000
         self.actions = ['LONG', 'SHORT', 'FLAT']
@@ -50,7 +51,7 @@ class FuturesEnv2(gym.Env):
         self.liquidated = False
         self.clear = False
         
-        print(f"학습 시작 위치: {self.current_step} (전체 데이터 중 {self.current_step/len(self.data)*100:.2f}%)\n")
+        self.logger.render(f"학습 시작 위치: {self.current_step} (전체 데이터 중 {self.current_step/len(self.data)*100:.2f}%)")
         #print(f"Start Step: {self.data.index[self.current_step]}\n")
         
         return self._next_observation()
@@ -82,7 +83,7 @@ class FuturesEnv2(gym.Env):
         action = action[-1]
         #reward = -self.num
         
-
+        
         if action > 0.3:
             position_direction = LONG
         elif action < -0.3:
@@ -101,16 +102,18 @@ class FuturesEnv2(gym.Env):
                 else:
                     reward = profit
                 '''
-                reward = self.position * (current_price - self.entry_price) / (self.entry_price * self.num)
+                reward = self.position * (current_price - self.entry_price) / (self.entry_price * self.num * 10)
             
             profit_rate = (self.balance - self.initial_balance) / self.initial_balance 
             self.returns_history.append(profit_rate * 100)   
             
 
             if profit / self.entry_price < -0.1:
-                reward += np.exp((profit + 0.1)) - current_price
+                #reward += np.exp((profit + 0.1)) - current_price
+                reward += np.exp((profit + 0.1)) - profit / self.entry_price / 10
             elif profit / self.entry_price > 0.2:
-                reward += np.exp(-(profit - 0.2)) + current_price
+                #reward += np.exp(-(profit - 0.2)) + current_price
+                reward += np.exp(-(profit - 0.2)) + profit / self.entry_price / 10
 
                 
             if self.balance < self.initial_balance * 0.7:
@@ -146,19 +149,38 @@ class FuturesEnv2(gym.Env):
             'clear': self.clear,
             'balance': self.balance
         }
+
+        self.logger.render_step_state(f'    - num: {self.num}')
+        self.logger.render_step_state(f'    - current_step: {self.current_step}')
+        self.logger.render_step_state(f'    - action: {action}')
+        self.logger.render_step_state(f'    - current_price: {current_price}')
+        self.logger.render_step_state(f'    - balance: {self.balance}')  
+        self.logger.render_step_state(f'    - profit: {profit}')
+        self.logger.render_step_state(f'    - position: {self.position}')
+        self.logger.render_step_state(f'    - position_direction: {position_direction}')
+        self.logger.render_step_state(f'    - size: {self.size}')
+        self.logger.render_step_state(f'    - entry_price: {self.entry_price}')
+        self.logger.render_step_state(f'    - reward: {reward}')
+        self.logger.render_step_state(f'    - done: {done}\n')
+
+        
         # 다음 가격으로 포지션 가치 업데이트
         return self._next_observation(), float(reward), done, info
 
     def render(self):
-        # Render the environment to the screen
-        if not self.liquidated and not self.clear:
-            print(f'마지막 데이터')
+        if self.logger is None:
+            return
+        # Render the environment to the screen    
+        if self.liquidated:
+            self.logger.error(f"  청산 여부: {'청산됨' if self.liquidated else '정상 종료'}")
+        elif self.clear:
+            self.logger.error(f"  목표 달성 : {'목표 달성' if self.clear else '달성 실패'}")
         else:
-            print(f"  청산 여부: {'청산됨' if self.liquidated else '정상 종료'}")
-            print(f"  목표 달성 여부: {'목표 달성' if self.clear else '달성 실패'}")
+            self.logger.error(f'  마지막 데이터')
+            
         profit = float(self.balance - self.initial_balance)
         profit_rate = float((self.balance - self.initial_balance) * 100 / self.initial_balance)
-        print(f'\n학습 마지막 위치: {self.current_step}')
-        print(f'Balance: {float(self.balance):.2f}')
-        print(f'Profit: {float(profit):.2f}, Profit Rate: {float(profit_rate):.2f}%')
-        print('========================================================')
+        self.logger.render(f'학습 마지막 위치: {self.current_step}')
+        self.logger.render(f'Balance: {float(self.balance):.2f}')
+        self.logger.render(f'Profit: {float(profit):.2f}, Profit Rate: {float(profit_rate):.2f}%')
+        
