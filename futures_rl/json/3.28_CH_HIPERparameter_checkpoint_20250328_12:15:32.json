@@ -1,0 +1,12 @@
+{
+    "start_time": "2025-03-28_11-03-10",
+    "end_time": "2025-03-28_12-15-32",
+    "total_episodes": 1917,
+    "best_return": 3344820,
+    "final_return": 2481957,
+    "start_positions_stats": {
+        "min_step": 156,
+        "max_step": 3343677,
+        "mean_step": 1678880.043274244
+    }
+}
