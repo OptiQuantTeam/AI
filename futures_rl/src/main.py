@@ -1,5 +1,4 @@
 from ppo import PPO
-from ppo2 import PPO2
 from train import train
 from resume import resume
 from continue_train import continue_training
@@ -7,9 +6,11 @@ from pathlib import Path
 import torch
 import env
 
+#실행코드 /opt/conda/bin/python /workspace/futures_rl/src/main.py
+#seaborn <- 그래프 스타일 변경 
 if __name__ == "__main__":
 
-    env = env.FuturesEnv2(path='/workspace/data/preprocess/BTCUSDT/BTCUSDT-1h.csv')
+    env = env.FuturesEnv3(path='/workspace/data/preprocess/BTCUSDT/BTCUSDT-5m.csv')
     state_dim = env.observation_space.shape[0]
     #action_dim = env.action_space.shape[0]
     action_dim = env.action_space.n
@@ -26,7 +27,7 @@ if __name__ == "__main__":
         
         if choice == 1:
             model_name = input('\n모델 저장 이름을 입력해주세요. [default: ppo]: ')
-            num_episodes = int(input('학습할 에피소드 수를 입력해주세요. [default: 1000]: ') or "1000")
+            num_episodes = int(input('에피소드 반복 횟수를 입력해주세요. [default: 100]: ') or "100")
             checkpoint_term = int(input('체크포인트 저장 주기를 입력해주세요. [default: 100]: ') or "100")
             lr_actor = float(input('lr_actor [default: 3e-4]: ') or "3e-4")            
             lr_critic = float(input('lr_critic [default: 1e-3]: ') or "1e-3")
@@ -45,7 +46,7 @@ if __name__ == "__main__":
                 epsilon=epsilon,
                 epochs=epochs)
             
-            train(env, ppo_agent, num_episodes, checkpoint_term=checkpoint_term)
+            train(env, ppo_agent, num_episodes=num_episodes, checkpoint_term=checkpoint_term)
             break
 
         elif choice == 2:
@@ -90,14 +91,11 @@ if __name__ == "__main__":
                 user_input = input("이 모델로 추가 학습을 진행하시겠습니까? (y/n): ")
                 
                 if user_input.lower() == 'y':
-                    try:
-                        episodes = int(input("추가로 학습할 에피소드 수를 입력하세요 (기본값: 1000): "))
-                    except ValueError:
-                        episodes = 1000
-                        print(f"기본값 {episodes}로 설정됩니다.")
-                    
-                    # 추가 학습 시작
-                    continue_training(env, current_model, episodes)
+                    print("\n계속 학습을 시작합니다...")
+                    print(f"현재 모델: {current_model}")
+                    num_episodes = int(input("추가 학습할 에피소드 횟수를 입력하세요 (기본값: 100): ") or "100")
+                    checkpoint_term = int(input("체크포인트 저장 주기를 입력하세요 (기본값: 100): ") or "100")
+                    continue_training(env, current_model, num_episodes=num_episodes, checkpoint_term=checkpoint_term)
                     break
                 elif user_input.lower() == 'n':
                     current_index = (current_index + 1) % len(sorted_models)

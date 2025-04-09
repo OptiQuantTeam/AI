@@ -6,7 +6,6 @@ import numpy as np
 from collections import deque
 import datetime
 from ActorCritic import ActorCritic
-from ActorCriticLSTM import ActorCriticLSTM
 
 class PPO:
     def __init__(
@@ -24,7 +23,6 @@ class PPO:
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.actor_critic = ActorCritic(state_dim, action_dim).to(device)
-        #self.actor_critic = ActorCriticLSTM(state_dim, action_dim, hidden_dim=128, lstm_layers=2).to(device)
         self.optimizer = optim.Adam([
             {'params': self.actor_critic.feature_extraction.parameters()},
             {'params': self.actor_critic.actor_direction.parameters()},
