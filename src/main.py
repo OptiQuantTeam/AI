@@ -3,7 +3,7 @@ import torch
 from Loader import Loader
 
 if __name__ == "__main__":
-    env_path = 'data/preprocess/BTCUSDT/BTCUSDT-5m.csv'
+    env_path = 'data/preprocess/BTCUSDT/BTCUSDT-5m-new.csv'
     
     while True: 
         print('학습 방법을 선택해주세요.')

@@ -14,10 +14,10 @@ def preprocess_historical(ticker='BTCUSDT', interval='1d'):
         tmp['CHG'] = CHG(tmp)
         tmp['stocRSI'] = StochasticRSI(tmp)
         tmp['MACD'] = MACD(tmp)
-        tmp = tmp[['Open','Close','Volume','CHG','stocRSI','MACD']]
+        tmp = tmp[['Close','High','Low','Volume','stocRSI','MACD']]
         data = pd.concat([data, tmp])
         year += 1
-    data.to_csv(f'/workspace/data/preprocess/{ticker}/{ticker}-{interval}.csv')
+    data.to_csv(f'/workspace/data/preprocess/{ticker}/{ticker}-{interval}-new.csv')
     return data
 
 if __name__ == '__main__':

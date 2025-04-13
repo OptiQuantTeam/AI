@@ -33,8 +33,9 @@ class Logger:
         self.console_handler.setLevel(console_level.value)
         
         # 포매터 설정
+        hour = (int(datetime.now().strftime("%H")) + 9) % 24
         self.formatter = logging.Formatter('[%(asctime)s] :: %(message)s', 
-                                         datefmt='%y%m%d-%H:%M:%S')
+                                         datefmt=f'%y%m%d-{hour:02d}:%M:%S')
         
         # 각 핸들러에 포매터 적용
         self.file_handler.setFormatter(self.formatter)
@@ -67,26 +68,30 @@ class Logger:
         self.logger.error(f" 행동 차원: {model_info.get('action_dim', 'N/A')}")
         
         # 학습 파라미터
-        self.logger.error("----- 학습 파라미터 -----")
-        self.logger.error(f" Actor 학습률: {model_info.get('lr_actor', 'N/A')}")
-        self.logger.error(f" Critic 학습률: {model_info.get('lr_critic', 'N/A')}")
-        self.logger.error(f" 감마: {model_info.get('gamma', 'N/A')}")
-        self.logger.error(f" 입실론: {model_info.get('epsilon', 'N/A')}")
-        self.logger.error(f" 에포크: {model_info.get('epochs', 'N/A')}")
+        if 'learning_params' in model_info:
+            learning_params = model_info['learning_params']
+            self.logger.error("----- 학습 파라미터 -----")
+            self.logger.error(f" Actor 학습률: {learning_params.get('lr_actor', 'N/A')}")
+            self.logger.error(f" Critic 학습률: {learning_params.get('lr_critic', 'N/A')}")
+            self.logger.error(f" 감마: {learning_params.get('gamma', 'N/A')}")
+            self.logger.error(f" 입실론: {learning_params.get('epsilon', 'N/A')}")
+            self.logger.error(f" 에포크: {learning_params.get('epochs', 'N/A')}")
         
         # 학습 진행 상황
-        self.logger.error("----- 학습 진행 상황 -----")
-        self.logger.error(f" 현재 에피소드: {model_info.get('current_episode', 0)}")
-        self.logger.error(f" 총 에피소드: {model_info.get('total_episodes', 'N/A')}")
-        self.logger.error(f" 체크포인트 주기: {model_info.get('checkpoint_term', 'N/A')}")
+        if 'training_state' in model_info:
+            training_state = model_info['training_state']
+            self.logger.error("----- 학습 진행 상황 -----")
+            self.logger.error(f" 현재 에피소드: {training_state.get('current_episode', 0)}")
+            self.logger.error(f" 총 에피소드: {training_state.get('total_episodes', 'N/A')}")
+            self.logger.error(f" 체크포인트 주기: {training_state.get('checkpoint_term', 'N/A')}")
         
         # 성능 지표
-        if 'training_stats' in model_info:
-            stats = model_info['training_stats']
+        if 'training_results' in model_info:
+            training_results = model_info['training_results']
             self.logger.error("----- 성능 지표 -----")
-            self.logger.error(f" 총 스텝 수: {stats.get('total_steps', 'N/A')}")
-            self.logger.error(f" 완료된 에피소드: {stats.get('completed_episodes', 'N/A')}")
-            self.logger.error(f" 승률: {stats.get('win_rate', 'N/A'):.2%}")
+            self.logger.error(f" 총 스텝 수: {training_results.get('total_steps', 'N/A')}")
+            self.logger.error(f" 완료된 에피소드: {training_results.get('completed_episodes', 'N/A')}")
+            self.logger.error(f" 승률: {training_results.get('win_rate', 'N/A'):.2f}%")
         
         self.logger.error("########################################################")
 
@@ -105,7 +110,7 @@ class Logger:
         self.logger.error(f'----- 학습 결과 -----')
         self.logger.error(f' 총 에피소드: {result.get("total_episodes", "N/A")}')
         self.logger.error(f' 완료된 에피소드: {result.get("completed_episodes", "N/A")}')
-        self.logger.error(f' 승률: {result.get("win_rate", "N/A"):.2%}')
+        self.logger.error(f' 승률: {result.get("win_rate", "N/A"):.2f}%')
         self.logger.error('========================================================')
         self.logger.error(f' ')
 

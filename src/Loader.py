@@ -3,10 +3,11 @@ from pathlib import Path
 import algo
 import env
 from Logger import Logger, LogLevel
+import datetime
 
 class Loader():
     def __init__(self, env_path, further=None):
-        self.env = env.FuturesEnv2(path=env_path)
+        self.env = env.FuturesEnv5(path=env_path)
         self.agent, self.model_info = self._set_model() if further is None else self._load_model(further)
         console_level, file_level = self._set_log_level()
         self.logger = Logger(self.agent.model_name, f'logs/{self.agent.model_name}.log', console_level=console_level, file_level=file_level)
@@ -66,7 +67,7 @@ class Loader():
                     print("\n모든 모델을 확인했습니다. 처음부터 다시 시작합니다.")
             else:
                 print("학습을 취소합니다.")
-                return None
+                exit(1)
 
 
     def _load_model(self, further):
@@ -76,26 +77,42 @@ class Loader():
         
         model = torch.load(model_path, map_location=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
         
-        
-        
-        # 이전 학습 상태 확인
+        # 모델 기본 정보
         model_name = model.get('model_name', 'ppo')
         state_dim = model.get('state_dim', self.env.observation_space.shape[0])
-        #action_dim = checkpoint.get('action_dim', env.action_space.shape[0])
         action_dim = model.get('action_dim', self.env.action_space.n)
-        self.checkpoint_term = model.get('checkpoint_term', 100)
-        gamma = model.get('gamma', 0.99)
-        epsilon = model.get('epsilon', 0.2)
-        epochs = model.get('epochs', 10)
-        current_episode = model.get('current_episode', 0)
-        self.num_episodes = model.get('total_episodes', 2000)
+        
+        # 학습 파라미터 (새 구조)
+        learning_params = model.get('learning_params', {})
+        gamma = learning_params.get('gamma', 0.99)
+        epsilon = learning_params.get('epsilon', 0.2)
+        epochs = learning_params.get('epochs', 10)
+        
+        # 학습 진행 상태 (새 구조)
+        training_state = model.get('training_state', {})
+        current_episode = training_state.get('current_episode', 0)
+        self.checkpoint_term = training_state.get('checkpoint_term', 100)
+        self.num_episodes = training_state.get('total_episodes', 2000)
+        total_steps = training_state.get('total_steps', 0)
         remaining_episodes = self.num_episodes - current_episode
-
+        
         # 옵티마이저에서 학습률 가져오기
         optimizer_state = model['optimizer_state_dict']
         lr_actor = optimizer_state['param_groups'][0]['lr']  # actor의 학습률
-        lr_critic = optimizer_state['param_groups'][3]['lr']  # critic의 학습률
+        lr_critic = optimizer_state['param_groups'][-1]['lr']  # critic의 학습률
         
+        # 학습 결과
+        training_results = model.get('training_results', {})
+        rewards_history = training_results.get('rewards_history', [])
+        episode_results = training_results.get('episode_results', [])
+        all_episode_returns = training_results.get('all_episode_returns', [])
+        episode_start_positions = training_results.get('episode_start_positions', [])
+        total_episodes = training_results.get('total_episodes', 0)
+        completed_episodes = training_results.get('completed_episodes', 0)
+        win_rate = training_results.get('win_rate', 0.0)
+        profit_rate_history = training_results.get('profit_rate_history', [])
+        
+
         if further:
            
             self.num_episodes = current_episode + int(input("추가로 학습할 에피소드 수를 입력하세요 (기본값: 1000): ") or "1000")
@@ -138,7 +155,7 @@ class Loader():
                     return
                 
         # PPO 에이전트 재생성
-        ppo_agent = algo.PPO(
+        ppo_agent = algo.PPOGRU(
             state_dim=state_dim,
             action_dim=action_dim,
             model_name=model_name,
@@ -155,7 +172,7 @@ class Loader():
         # 옵티마이저 상태 로드 (새로운 학습률 적용)
         optimizer_state = model['optimizer_state_dict']
         optimizer_state['param_groups'][0]['lr'] = lr_actor  # actor 학습률
-        optimizer_state['param_groups'][3]['lr'] = lr_critic  # critic 학습률
+        optimizer_state['param_groups'][-1]['lr'] = lr_critic  # critic 학습률
         ppo_agent.optimizer.load_state_dict(optimizer_state)
 
 
@@ -164,23 +181,42 @@ class Loader():
             'model_name': model.get('model_name', 'ppo'),
             'state_dim': state_dim,
             'action_dim': action_dim,
-            'checkpoint_term': self.checkpoint_term,
-            'gamma': gamma,
-            'epsilon': epsilon,
-            'epochs': epochs,
-            'current_episode': current_episode,
-            'total_episodes': self.num_episodes,
-            'lr_actor': optimizer_state['param_groups'][0]['lr'],
-            'lr_critic': optimizer_state['param_groups'][3]['lr'],
-            'training_stats': model.get('training_stats', {})
+            'learning_params': {
+                'gamma': gamma,
+                'epsilon': epsilon,
+                'epochs': epochs,
+                'lr_actor': lr_actor,
+                'lr_critic': lr_critic,
+                'batch_size': 256,
+                'device': str(ppo_agent.device)
+            },
+            'training_state': {
+                'current_episode': current_episode,
+                'total_episodes': self.num_episodes,
+                'last_step': 0,
+                'checkpoint_term': self.checkpoint_term,
+                'total_steps': total_steps,
+                'update_counts': 0
+            },
+            'training_results': {
+                'rewards_history': rewards_history,
+                'episode_results': episode_results,
+                'all_episode_returns': all_episode_returns,
+                'episode_start_positions': episode_start_positions,
+                'total_episodes': total_episodes,
+                'total_steps': total_steps,
+                'completed_episodes': completed_episodes,
+                'win_rate': win_rate,
+                'profit_rate_history': profit_rate_history
+            }
         }
         
         
 
-        return ppo_agent, model
+        return ppo_agent, model_info
         
     def _set_model(self):
-        model_name = input('\n모델 저장 이름을 입력해주세요. [default: ppo]: ')
+        model_name = input('\n모델 저장 이름을 입력해주세요. [default: ppo]: ') or "ppo"
         self.num_episodes = int(input('학습할 에피소드 수를 입력해주세요. [default: 1000]: ') or "1000")
         self.checkpoint_term = int(input('체크포인트 저장 주기를 입력해주세요. [default: 100]: ') or "100")
         lr_actor = float(input('lr_actor [default: 3e-4]: ') or "3e-4")            
@@ -189,7 +225,7 @@ class Loader():
         epsilon = float(input('epsilon [default: 0.2]: ') or "0.2")
         epochs = int(input('epochs [default: 10]: ') or "10")
 
-        ppo_agent = algo.PPO(
+        ppo_agent = algo.PPOGRU(
                 state_dim=self.env.observation_space.shape[0],
                 action_dim=self.env.action_space.n,
                 model_name=model_name,
@@ -199,23 +235,70 @@ class Loader():
                 epsilon=epsilon,
                 epochs=epochs)
 
-        # 새 모델의 초기 정보 구성
+        # 새 모델의 초기 정보 구성 - 새로운 데이터 구조 적용
         model_info = {
+            # 모델 기본 정보
             'model_name': model_name,
             'state_dim': self.env.observation_space.shape[0],
             'action_dim': self.env.action_space.n,
-            'checkpoint_term': self.checkpoint_term,
-            'gamma': gamma,
-            'epsilon': epsilon,
-            'epochs': epochs,
-            'current_episode': 0,
-            'total_episodes': self.num_episodes,
-            'lr_actor': lr_actor,
-            'lr_critic': lr_critic,
-            'training_stats': {
+            
+            # 모델 가중치는 초기 상태로 유지
+            
+            # 학습 파라미터
+            'learning_params': {
+                'gamma': gamma,
+                'epsilon': epsilon,
+                'epochs': epochs,
+                'lr_actor': lr_actor,
+                'lr_critic': lr_critic,
+                'batch_size': 256,
+                'device': str(ppo_agent.device)
+            },
+            
+            # 학습 진행 상태
+            'training_state': {
+                'current_episode': 0,
+                'total_episodes': self.num_episodes,
+                'last_step': 0,
+                'checkpoint_term': self.checkpoint_term,
                 'total_steps': 0,
+                'update_counts': 0
+            },
+            
+            # 학습 결과 - 초기 상태
+            'training_results': {
+                'rewards_history': [],
+                'episode_results': [],
+                'all_episode_returns': [],
+                'episode_start_positions': [],
+                'total_episodes': 0,
                 'completed_episodes': 0,
-                'win_rate': 0.0
+                'win_rate': 0.0,
+                'profit_rate_history': []
+            },
+            
+            # 환경 정보
+            'environment_info': {
+                'data_path': self.env.path if hasattr(self.env, 'path') else None,
+                'total_data_length': len(self.env.data) if hasattr(self.env, 'data') else 0,
+                'training_period': {
+                    'start': str(self.env.data.index[0]) if hasattr(self.env, 'data') and hasattr(self.env.data, 'index') else None,
+                    'end': str(self.env.data.index[-1]) if hasattr(self.env, 'data') and hasattr(self.env.data, 'index') else None
+                }
+            },
+            
+            # 세션 정보 - 초기 상태
+            'session_info': {
+                'session_type': 'new',
+                'session_time': (datetime.datetime.now() + datetime.timedelta(hours=9)).strftime('%Y-%m-%d_%H-%M-%S'),
+                'start_time': (datetime.datetime.now() + datetime.timedelta(hours=9)).strftime('%Y-%m-%d_%H-%M-%S'),
+                'log_file': f'logs/{model_name}.log',
+                'previous_episodes': 0,
+                'current_session_episodes': 0,
+                'total_episodes_all_sessions': 0,
+                'previous_steps': 0,
+                'current_session_steps': 0,
+                'training_sessions': 1
             }
         }
 
