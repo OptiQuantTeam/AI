@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 import gym
 from gym import spaces
-from preprocess import preprocess_data
 from Logger import Logger
 
 # position constant
@@ -64,7 +63,47 @@ class FuturesEnv7(gym.Env):
 
     def _load_data(self):
         data = pd.read_csv(self.path)
-        self.data = preprocess_data(data)
+        self.data = self._preprocess_data(data)
+
+    def _preprocess_data(self, df):
+        """데이터 전처리: 결측치 처리 및 정규화"""
+        # 필요한 컬럼만 선택
+        #df = df[['Open', 'Close', 'Volume', 'CHG', 'stocRSI', 'MACD']]
+        df = df[['Open', 'Close', 'High', 'Low', 'Volume', 'EMA_4_slope', \
+                 'EMA_12_slope', 'EMA_24_slope', 'stochRSI', 'MACD', 'MACD_Signal', \
+                    'Divergence Signal', 'Trade Signal', 'Cross Signal', 'bb_width', \
+                        'bb_width_change', 'price_change']]
+
+        
+        # 결측치 처리
+        #df = df.fillna(method='ffill')  # 앞의 값으로 채우기
+        df = df.ffill()
+        df = df.bfill()
+        #df = df.fillna(method='bfill')  # 뒤의 값으로 채우기
+        
+        # 이상치 제거 (극단값 제거)
+        #for column in ['Open', 'Close', 'Volume', 'CHG']:
+        for column in ['Open', 'Close', 'High', 'Low', 'Volume', 'EMA_4_slope', \
+                       'EMA_12_slope', 'EMA_24_slope', 'stochRSI', 'MACD', 'MACD_Signal', \
+                        'Divergence Signal', 'Trade Signal', 'Cross Signal', 'bb_width', \
+                            'bb_width_change', 'price_change']:
+            
+            q1 = df[column].quantile(0.01)
+            q3 = df[column].quantile(0.99)
+            df[column] = df[column].clip(q1, q3)
+        
+        # 정규화
+        '''
+        for column in ['Open', 'Close', 'Volume', 'CHG']:
+            mean = df[column].mean()
+            std = df[column].std()
+            df[column] = (df[column] - mean) / (std + 1e-8)
+        '''
+        # stocRSI와 MACD는 이미 정규화된 형태이므로 극단값만 처리
+        #df['stocRSI'] = df['stocRSI'].clip(0, 100)
+        #df['MACD'] = df['MACD'].clip(-10, 10)  # 적절한 범위로 조정
+            
+        return df
         
     def _calculate_body(self, row: pd.Series) -> float:
         """캔들 몸통 크기 계산"""
