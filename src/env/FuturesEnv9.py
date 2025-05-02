@@ -1,0 +1,514 @@
+import numpy as np
+import pandas as pd
+import gym
+from gym import spaces
+from Logger import Logger
+
+# position constant
+LONG = 1
+SHORT = -1
+FLAT = 0
+
+# action constant
+BUY = 1
+SELL = -1
+HOLD = 0
+
+class FuturesEnv9(gym.Env):
+    def __init__(self, path=None, logger=None):
+        '''
+        환경의 초기 설정값
+        Args:
+            path: 데이터 파일 경로
+            logger: 로거 객체
+            initial_balance: 초기 자산
+            actions: 행동 종류
+            leverage: 레버리지
+            trade_fee: 거래 수수료
+            max_steps: 마지막 데이터 위치에서 최대 스텝
+            action_space: 행동 공간
+            observation_space: 관찰 공간
+        '''
+        self.path = path
+        self.logger = logger
+        self.initial_balance = 1000000
+        self.actions = ['LONG', 'SHORT', 'FLAT']
+        self.initial_leverage = 2  # 초기 레버리지
+        self.leverage = self.initial_leverage  # 현재 레버리지
+        self.min_leverage = 1.0  # 최소 레버리지
+        self.max_leverage = 2.0  # 최대 레버리지
+        self.leverage_step = 0.2  # 레버리지 조정 단위
+        self.consecutive_losses = 0  # 연속 손실 횟수
+        self.consecutive_wins = 0  # 연속 수익 횟수
+        self.trade_fee = 0.0002
+        self.max_steps = 2100
+        self.min_steps = 2048  # PPO 배치 사이즈를 고려한 최소 스텝 수
+        self.profit_target = 0.02  # 2% 수익 목표
+        self.max_position_ratio = 0.2  # 최대 포지션 크기 비율 감소
+        self.stop_loss_threshold = 0.02  # 손절매 임계값 감소
+        self.trailing_stop = 0.004  # 트레일링 스탑 감소
+        
+        # 점진적 손실 제한 관련 파라미터
+        self.initial_loss_limit = 0.10  # 초기 손실 한도 (10%)
+        self.final_loss_limit = 0.03    # 최종 손실 한도 (3%)
+        self.loss_limit_decay = 0.001   # 손실 한도 감소율
+        self.current_loss_limit = self.initial_loss_limit  # 현재 손실 한도
+        self.episode_count = 0          # 에피소드 카운트
+        
+        # 레버리지에 따른 손실 제한 관련 파라미터
+        self.leverage_loss_limits = {
+            2.0: 0.10,  # 2배 레버리지일 때 10%
+            1.8: 0.09,  # 1.8배 레버리지일 때 9%
+            1.6: 0.08,  # 1.6배 레버리지일 때 8%
+            1.4: 0.07,  # 1.4배 레버리지일 때 7%
+            1.2: 0.06,  # 1.2배 레버리지일 때 6%
+            1.0: 0.05   # 1배 레버리지일 때 5%
+        }
+        
+        self._load_data()
+        
+        # 상태 공간 확장 (변동성과 다중 시간프레임 정보 추가)
+        self.observation_space = spaces.Box(
+            low=-np.inf, 
+            high=np.inf, 
+            shape=(12,),  # 상태 공간 확장
+            dtype=np.float32
+        )
+        self.action_space = spaces.Discrete(3, start=-1)
+
+        self.next_step = 0
+        self.next = True
+        #self.last_step = np.random.randint(36, len(self.data)//4)
+        self.last_step = 100
+
+        
+
+    def _load_data(self):
+        data = pd.read_csv(self.path)
+        self.data = self._preprocess_data(data)
+
+    def _preprocess_data(self, df):
+        """데이터 전처리: 결측치 처리 및 정규화"""
+        # 필요한 컬럼만 선택
+        #df = df[['Open', 'Close', 'Volume', 'CHG', 'stocRSI', 'MACD']]
+        df = df[['Open', 'Close', 'High', 'Low', 'Volume', 'EMA_4_slope', \
+                 'EMA_12_slope', 'EMA_24_slope', 'stochRSI', 'MACD', 'MACD_Signal', \
+                    'Divergence Signal', 'Trade Signal', 'Cross Signal', 'bb_width', \
+                        'bb_width_change', 'price_change']]
+
+        
+        # 결측치 처리
+        #df = df.fillna(method='ffill')  # 앞의 값으로 채우기
+        df = df.ffill()
+        df = df.bfill()
+        #df = df.fillna(method='bfill')  # 뒤의 값으로 채우기
+        
+        # 이상치 제거 (극단값 제거)
+        #for column in ['Open', 'Close', 'Volume', 'CHG']:
+        for column in ['Open', 'Close', 'High', 'Low', 'Volume', 'EMA_4_slope', \
+                       'EMA_12_slope', 'EMA_24_slope', 'stochRSI', 'MACD', 'MACD_Signal', \
+                        'Divergence Signal', 'Trade Signal', 'Cross Signal', 'bb_width', \
+                            'bb_width_change', 'price_change']:
+            
+            q1 = df[column].quantile(0.01)
+            q3 = df[column].quantile(0.99)
+            df[column] = df[column].clip(q1, q3)
+        
+        # 정규화
+        '''
+        for column in ['Open', 'Close', 'Volume', 'CHG']:
+            mean = df[column].mean()
+            std = df[column].std()
+            df[column] = (df[column] - mean) / (std + 1e-8)
+        '''
+        # stocRSI와 MACD는 이미 정규화된 형태이므로 극단값만 처리
+        #df['stocRSI'] = df['stocRSI'].clip(0, 100)
+        #df['MACD'] = df['MACD'].clip(-10, 10)  # 적절한 범위로 조정
+            
+        return df
+    
+    def _adjust_loss_limit(self):
+        '''
+        레버리지에 따라 손실 한도를 조정하는 함수
+        '''
+        # 가장 가까운 레버리지 단계 찾기
+        closest_leverage = min(self.leverage_loss_limits.keys(), 
+                             key=lambda x: abs(x - self.leverage))
+        
+        # 해당 레버리지에 맞는 손실 한도 설정
+        self.current_loss_limit = self.leverage_loss_limits[closest_leverage]
+        self.stop_loss_threshold = self.current_loss_limit
+        self.logger.render(f"현재 레버리지: {self.leverage:.1f}x, 손실 한도: {self.current_loss_limit*100:.1f}%")
+
+    def _adjust_leverage(self, profit_rate):
+        '''
+        수익률에 따라 레버리지를 조정하는 함수
+        Args:
+            profit_rate: 현재 거래의 수익률
+        '''
+        if profit_rate < 0.01:  # 손실인 경우
+            self.consecutive_losses += 1
+            self.consecutive_wins = 0
+            
+            # 연속 손실에 따라 레버리지 감소
+            if self.consecutive_losses >= 2:
+                self.leverage = max(self.min_leverage, self.leverage - self.leverage_step)
+                self._adjust_loss_limit()  # 레버리지 변경 시 손실 한도 재조정
+                #self.logger.render(f"연속 손실로 레버리지 감소: {self.leverage:.2f}")
+        else:  # 수익인 경우
+            self.consecutive_wins += 1
+            self.consecutive_losses = 0
+            
+            # 연속 수익에 따라 레버리지 증가
+            if self.consecutive_wins >= 2:
+                self.leverage = min(self.max_leverage, self.leverage + self.leverage_step)
+                self._adjust_loss_limit()  # 레버리지 변경 시 손실 한도 재조정
+                #self.logger.render(f"연속 수익으로 레버리지 증가: {self.leverage:.2f}")
+
+    def reset(self):
+        '''
+        환경 초기화 함수
+        Args:
+            current_step: 현재 스텝
+            last_step: 마지막 스텝
+            balance: 현재 자산
+            position: 현재 포지션
+            action: 현재 행동
+            size: 현재 포지션 크기
+            position_size: 현재 포지션 크기
+            entry_price: 진입 가격
+            num: 반복한 스텝
+            liquidated: 청산 여부
+            clear: 목한 달성 여부
+            stay_count: 유지 기간
+            success: 성공 횟수
+            failure: 실패 횟수
+            balance_profit_rate: 수익률
+            max_price: 최고 가격 (트레일링 스탑용)
+            min_price: 최저 가격 (트레일링 스탑용)
+
+            returns_history: 보상 기록
+            reward_history: 보상 기록
+            profit_rate_history: 수익률 기록
+            position_history: 포지션 기록
+            price_history: 가격 기록
+            balance_history: 자산 기록
+            profit_history: 이익 기록
+        Returns:
+            state: 다음 상태
+        '''
+        '''
+        # 일정 확률로 랜덤 시작, 그 외에는 연속적인 시작
+        while True:
+            if np.random.random() < 0.3:
+                self.current_step = np.random.randint(36, len(self.data) - self.max_steps)
+            else:
+                self.current_step = self.last_step + 1
+            if self.current_step < len(self.data) - self.max_steps:
+                break
+        '''
+
+        self.current_step = self.last_step + 1
+        if self.current_step >= len(self.data) - self.max_steps:
+            self.current_step = 100
+        
+
+        self.last_step = self.current_step
+        self.balance = self.initial_balance
+        self.position = FLAT
+        self.action = HOLD
+        self.size = 1e-6
+        self.position_size = 0
+        self.entry_price = 1
+        self.num = 0
+        self.liquidated = False
+        self.clear = False
+        self.success = 0
+        self.failure = 0
+        self.balance_profit_rate = 0
+        self.max_price = 0  # 최고 가격 초기화
+        self.min_price = float('inf')  # 최저 가격 초기화
+        self.total_trade = 0
+        
+        # 에피소드 종료 시 손실 한도 업데이트
+        self.episode_count += 1
+        self._adjust_loss_limit()  # 레버리지에 따른 손실 한도 조정
+        
+        self.returns_history = [0]
+        self.reward_history = []
+        self.balance_profit_rate_history = [0]
+        self.position_history = []  # 포지션 기록 초기화
+        self.price_history = []
+        self.balance_history = []
+        self.profit_history = []
+        self.profit_rate_history = []
+        
+        self.logger.render(f"학습 시작 위치: {self.current_step} (전체 데이터 중 {self.current_step/len(self.data)*100:.2f}%)")
+        self.logger.render(f"현재 손실 한도: {self.current_loss_limit*100:.1f}%")
+        
+        return self._next_observation()
+    
+    def _next_observation(self):
+        '''
+        다음 상태 함수 - 기술적 지표 기반 상태 데이터
+        Returns:
+            state: 다음 상태 (25개 특성)
+        '''
+       
+        # 기술적 지표만 사용 (총 25개)
+        state = np.array([
+            # 가격 관련 지표
+            self.data.iloc[self.current_step]['Close'],
+            self.data.iloc[self.current_step]['Open'],
+            self.data.iloc[self.current_step]['High'],
+            self.data.iloc[self.current_step]['Low'],
+            self.data.iloc[self.current_step]['Volume'],
+            
+            # 이동평균선
+            self.data.iloc[self.current_step]['EMA_4_slope'],
+            self.data.iloc[self.current_step]['EMA_12_slope'],
+            self.data.iloc[self.current_step]['EMA_24_slope'],
+            
+            # RSI
+            self.data.iloc[self.current_step]['stochRSI'],
+            
+            # MACD
+            self.data.iloc[self.current_step]['MACD'],
+            self.data.iloc[self.current_step]['MACD_Signal'],
+            self.data.iloc[self.current_step]['Divergence Signal'],
+            self.data.iloc[self.current_step]['Trade Signal'],
+            self.data.iloc[self.current_step]['Cross Signal'],
+            
+            # 볼린저 밴드
+            self.data.iloc[self.current_step]['bb_width'],
+            self.data.iloc[self.current_step]['bb_width_change'],
+            
+            # 가격 변화율
+            self.data.iloc[self.current_step]['price_change'],
+
+        ], dtype=np.float32)
+        
+        return state
+        
+    def step(self, action):
+        '''
+        행동 함수
+        Args:
+            action: 행동 [-1, 0, 1]
+            - 1 (LONG): 현재 Long이면 유지, Flat이면 Long 진입, Short이면 Flat으로 청산
+            - -1 (SHORT): 현재 Long이면 Flat으로 청산, Flat이면 Short 진입, Short이면 유지
+            - 0 (FLAT): 현재 포지션 유지
+        Returns:
+            state: 다음 상태
+            reward: 보상
+            done: 종료 여부
+            info: 추가 정보
+        '''
+        current_price = self.data.iloc[self.current_step]['Close']
+        self.price_history.append(current_price)
+        done = self.current_step >= len(self.data) - 1
+        profit = 0
+        trade_success = False
+        profit_rate = 0
+        target_profit_rate = 0.02
+        
+        # 즉각적인 보상 초기화
+        immediate_reward = 0
+        position_reward = 0
+        action_reward = 0
+        
+        # 1. 행동에 대한 즉각적인 보상
+        if action == LONG:
+            action_reward -= 0.1  # LONG 진입 시도에 대한 작은 보상
+        elif action == SHORT:
+            action_reward -= 0.1  # SHORT 진입 시도에 대한 작은 보상
+        else:
+            action_reward += 0.05  # HOLD에 대한 작은 보상
+            
+        
+
+        # 기본 보상 계산
+        immediate_reward = action_reward + position_reward 
+        
+        if self.num > 7 * 24 * 8:
+            done = True
+            
+        # 수익 목표 달성 시 추가 보상
+        if self.balance > self.initial_balance * (1 + self.profit_target):
+            immediate_reward += 0.5
+            self.clear = True
+            
+               
+        
+        # 행동에 따른 포지션 방향 결정
+        if action == LONG:
+            if self.position == LONG:
+                position_direction = LONG
+            elif self.position == FLAT:
+                position_direction = LONG
+            else:
+                position_direction = FLAT
+        
+        elif action == SHORT:
+            if self.position == LONG:
+                position_direction = FLAT
+            elif self.position == FLAT:
+                position_direction = SHORT
+            else:
+                position_direction = SHORT
+        
+        else:
+            position_direction = self.position
+
+        # 포지션 변경 시
+        if self.position != position_direction:
+            # 기존 포지션 청산
+            if self.position != FLAT:
+                profit = self.position * (current_price - self.entry_price)
+                self.balance += profit * self.size
+                
+                exit_cost = current_price * self.trade_fee
+                self.balance -= exit_cost * self.size
+                
+                self.size = 1e-6
+                self.position = FLAT
+
+                profit_rate = profit / self.entry_price
+                
+                self._adjust_leverage(profit_rate)
+                
+                # 청산 시 보상 계산 (과거 행동에 대한 보상)
+                exit_reward = (profit - exit_cost) / (self.entry_price) * 100
+                
+                if profit_rate > 0.01:
+                    self.success += 1
+                    trade_success = True
+                    exit_reward += 1.0
+                else:
+                    self.failure += 1
+                    if abs(profit_rate) > self.stop_loss_threshold:
+                        exit_reward -= 0.5
+                
+                self.total_trade += 1
+                
+            self.balance_profit_rate = (self.balance - self.initial_balance) / self.initial_balance 
+            
+            # 새로운 포지션 진입
+            if position_direction != FLAT and not done:
+                trade_ratio = self.max_position_ratio
+                available_balance = self.balance * (1 - self.trade_fee * self.leverage)
+                position_size = available_balance * self.leverage * trade_ratio / current_price
+                entry_cost = position_size * current_price * self.trade_fee
+                self.balance -= entry_cost
+                self.position = position_direction
+                self.size = position_size
+                self.entry_price = current_price
+                
+                if self.position == LONG:
+                    self.max_price = current_price
+                else:
+                    self.min_price = current_price
+                    
+                # 포지션 진입 시 즉각적인 보상
+                #immediate_reward += 0.2
+
+        # 포지션 유지 중일 때 손절매 및 트레일링 스탑 로직
+        elif self.position != FLAT:
+            # 손절매 로직
+            if self.position == LONG and (current_price - self.entry_price) / self.entry_price < -self.stop_loss_threshold:
+                profit = self.position * (current_price - self.entry_price)
+                self.balance += profit * self.size
+                exit_cost = current_price * self.trade_fee
+                self.balance -= exit_cost * self.size
+                self.size = 1e-6
+                self.position = FLAT
+                position_direction = FLAT
+                profit_rate = profit / self.entry_price
+                exit_reward = (profit - exit_cost) / (self.entry_price) * 100
+                #action_reward += 0.5  # 손절매 실행에 대한 보상 (리스크 관리)
+            elif self.position == SHORT and (self.entry_price - current_price) / self.entry_price < -self.stop_loss_threshold:
+                profit = self.position * (current_price - self.entry_price)
+                self.balance += profit * self.size
+                exit_cost = current_price * self.trade_fee
+                self.balance -= exit_cost * self.size
+                self.size = 1e-6
+                self.position = FLAT
+                position_direction = FLAT
+                profit_rate = profit / self.entry_price
+                exit_reward = (profit - exit_cost) / (self.entry_price) * 100
+                #action_reward += 0.5  # 손절매 실행에 대한 보상 (리스크 관리)
+        
+        # 2. 현재 포지션에 대한 즉각적인 보상
+        if self.position != FLAT:
+            unrealized_profit = self.position * (current_price - self.entry_price) * self.size / self.entry_price
+            position_reward = unrealized_profit  # 미실현 손익에 대한 보상
+
+        # 최종 보상 계산 (즉각적인 보상 + 청산 보상)
+        total_reward = immediate_reward + (exit_reward if 'exit_reward' in locals() else 0)
+
+        self.position_history.append(self.position)
+        self.balance_profit_rate_history.append(self.balance_profit_rate * 100)  
+        self.profit_history.append(profit)
+        self.balance_history.append(self.balance)
+        self.reward_history.append(total_reward)
+        self.profit_rate_history.append(profit_rate*100)
+
+        if done:
+            self.returns_history.append(self.current_step)
+            self.last_step = self.current_step
+            
+            # 최종 수익률에 따른 보상
+            final_profit_rate = (self.balance - self.initial_balance) / self.initial_balance
+            reward = final_profit_rate * 100
+            
+            if final_profit_rate > 0.01:
+                self.next = True
+                self.next_step += 1
+            else:
+                self.next = False
+        else:
+            self.current_step += 1
+
+        info = {
+            'liquidated': self.liquidated,
+            'clear': self.clear,
+            'balance': self.balance,
+            'profit_rate': float((self.balance - self.initial_balance) * 100 / self.initial_balance),
+            'trade_success': trade_success,
+            'position': position_direction
+        }
+
+        self.logger.render_step_state(f'    - num: {self.num}')
+        self.logger.render_step_state(f'    - current_step: {self.current_step}')
+        self.logger.render_step_state(f'    - action: {action}')
+        self.logger.render_step_state(f'    - current_price: {current_price}')
+        self.logger.render_step_state(f'    - balance: {self.balance}')  
+        self.logger.render_step_state(f'    - profit: {profit}')
+        self.logger.render_step_state(f'    - position: {self.position}')
+        self.logger.render_step_state(f'    - position_direction: {position_direction}')
+        self.logger.render_step_state(f'    - size: {self.size}')
+        self.logger.render_step_state(f'    - entry_price: {self.entry_price}')
+        self.logger.render_step_state(f'    - reward: {total_reward}')
+        self.logger.render_step_state(f'    - success: {self.success}')
+        self.logger.render_step_state(f'    - failure: {self.failure}')
+        self.logger.render_step_state(f'    - done: {done}\n')
+
+        return self._next_observation(), float(total_reward), done, info
+
+    def render(self):
+        if self.logger is None:
+            return
+        # Render the environment to the screen    
+        if self.liquidated:
+            self.logger.error(f"  청산 여부: {'청산됨' if self.liquidated else '정상 종료'}")
+        elif self.clear:
+            self.logger.error(f"  목표 달성 : {'목표 달성' if self.clear else '달성 실패'}")
+        else:
+            self.logger.error(f'  마지막 데이터')
+            
+        profit = float(self.balance - self.initial_balance)
+        profit_rate = float((self.balance - self.initial_balance) * 100 / self.initial_balance)
+        self.logger.render(f'학습 마지막 위치: {self.current_step}')
+        self.logger.render(f'Balance: {float(self.balance):.2f}')
+        self.logger.render(f'Profit: {float(profit):.2f}, Profit Rate: {float(profit_rate):.2f}%')
+        self.logger.render(f'거래 횟수: {self.total_trade}, 학습 횟수: {self.next_step}')

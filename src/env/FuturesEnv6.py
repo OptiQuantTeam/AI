@@ -15,7 +15,7 @@ BUY = 1
 SELL = -1
 HOLD = 0
 
-class FuturesEnv5(gym.Env):
+class FuturesEnv6(gym.Env):
     def __init__(self, path=None, logger=None):
         '''
         환경의 초기 설정값
@@ -60,6 +60,11 @@ class FuturesEnv5(gym.Env):
         )
         self.action_space = spaces.Discrete(3, start=-1)
 
+        self.next_step = 0
+        self.next = True
+        self.last_step = np.random.randint(36, len(self.data)//4)
+        self.save_step = self.last_step
+
     def _load_data(self):
         data = pd.read_csv(self.path)
         self.data = preprocess_data(data)
@@ -98,7 +103,17 @@ class FuturesEnv5(gym.Env):
             state: 다음 상태
         '''
         
-        self.current_step = np.random.randint(36, len(self.data) - self.max_steps)
+
+        if self.next:
+            if self.last_step < len(self.data) - 1:
+                self.current_step = self.last_step
+                self.save_step = self.last_step
+            else:
+                self.current_step = np.random.randint(36, len(self.data) // 2)
+                self.save_step = self.current_step
+        else:
+            self.current_step = self.save_step
+        #self.current_step = np.random.randint(36, len(self.data) - self.max_steps)
         self.last_step = self.current_step
         self.balance = self.initial_balance
         self.position = FLAT
@@ -404,8 +419,11 @@ class FuturesEnv5(gym.Env):
             final_profit_rate = (self.balance - self.initial_balance) / self.initial_balance
             if final_profit_rate > 0:
                 reward += 20  # 수익에 대한 보상 감소
+                self.next = True
+                self.next_step += 1
             elif final_profit_rate < -0.01:  # 손실 허용 범위 감소
                 reward -= 40  # 손실에 대한 페널티 증가
+                self.next = False
         else:
             self.current_step += 1
 
@@ -452,4 +470,4 @@ class FuturesEnv5(gym.Env):
         self.logger.render(f'학습 마지막 위치: {self.current_step}')
         self.logger.render(f'Balance: {float(self.balance):.2f}')
         self.logger.render(f'Profit: {float(profit):.2f}, Profit Rate: {float(profit_rate):.2f}%')
-        
+        self.logger.render(f'학습 횟수: {self.next_step}')

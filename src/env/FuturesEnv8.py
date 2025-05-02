@@ -15,7 +15,7 @@ BUY = 1
 SELL = -1
 HOLD = 0
 
-class FuturesEnv5(gym.Env):
+class FuturesEnv8(gym.Env):
     def __init__(self, path=None, logger=None):
         '''
         환경의 초기 설정값
@@ -55,10 +55,15 @@ class FuturesEnv5(gym.Env):
         self.observation_space = spaces.Box(
             low=-np.inf, 
             high=np.inf, 
-            shape=(15,), 
+            shape=(16,), 
             dtype=np.float32
         )
         self.action_space = spaces.Discrete(3, start=-1)
+
+        self.next_step = 0
+        self.next = True
+        self.last_step = np.random.randint(36, len(self.data)//4)
+        self.save_step = self.last_step
 
     def _load_data(self):
         data = pd.read_csv(self.path)
@@ -114,6 +119,7 @@ class FuturesEnv5(gym.Env):
         self.balance_profit_rate = 0
         self.max_price = 0  # 최고 가격 초기화
         self.min_price = float('inf')  # 최저 가격 초기화
+        self.total_trade = 0
         
         self.returns_history = [0]
         self.reward_history = []
@@ -122,6 +128,7 @@ class FuturesEnv5(gym.Env):
         self.price_history = []
         self.balance_history = []
         self.profit_history = []
+        self.profit_rate_history = []
         
         self.logger.render(f"학습 시작 위치: {self.current_step} (전체 데이터 중 {self.current_step/len(self.data)*100:.2f}%)")
         
@@ -129,96 +136,40 @@ class FuturesEnv5(gym.Env):
     
     def _next_observation(self):
         '''
-        다음 상태 함수 - 확장된 상태 데이터
+        다음 상태 함수 - 기술적 지표 기반 상태 데이터
         Returns:
             state: 다음 상태 (15개 특성)
         '''
-        def get_composite_change_score(data):
-            short_term = np.mean(np.diff(data, n=1))
-            mid_term = np.mean(np.diff(data, n=5))
-            long_term = np.mean(np.diff(data, n=21))
-            weights = [0.5, 0.3, 0.2]
-            composite_score = np.average([short_term, mid_term, long_term], weights=weights)
-            return np.tanh(composite_score)
-
-        # 기본 가격 데이터
-        current_price = self.data.iloc[self.current_step]['Close']
-        current_volume = self.data.iloc[self.current_step]['Volume']
-        
-        # 1. 가격 기반 지표
-        lookback = max(60, self.bb_period)  # 가장 긴 기간에 맞춤
-        price_data = self.data.iloc[self.current_step-lookback:self.current_step+1]['Close']
-        volume_data = self.data.iloc[self.current_step-lookback:self.current_step+1]['Volume']
-        
-        # 이동평균선
-        mas = [np.mean(price_data[-period:]) for period in self.ma_periods]
-        ma_features = [(current_price - ma) / ma for ma in mas]  # 현재 가격과의 차이
-        
-        # 볼린저 밴드
-        bb_ma = np.mean(price_data[-self.bb_period:])
-        bb_std = np.std(price_data[-self.bb_period:])
-        bb_upper = bb_ma + self.bb_std * bb_std
-        bb_lower = bb_ma - self.bb_std * bb_std
-        bb_features = [
-            (current_price - bb_upper) / bb_upper,  # 상단 밴드와의 거리
-            (current_price - bb_lower) / bb_lower   # 하단 밴드와의 거리
-        ]
-        
-        # ATR (변동성)
-        high_low = self.data.iloc[self.current_step-self.atr_period:self.current_step+1]['High'] - \
-                  self.data.iloc[self.current_step-self.atr_period:self.current_step+1]['Low']
-        high_close = np.abs(self.data.iloc[self.current_step-self.atr_period:self.current_step+1]['High'] - \
-                          self.data.iloc[self.current_step-self.atr_period:self.current_step+1]['Close'].shift(1))
-        low_close = np.abs(self.data.iloc[self.current_step-self.atr_period:self.current_step+1]['Low'] - \
-                         self.data.iloc[self.current_step-self.atr_period:self.current_step+1]['Close'].shift(1))
-        ranges = pd.concat([high_low, high_close, low_close], axis=1)
-        true_range = np.max(ranges, axis=1)
-        atr = np.mean(true_range)
-        atr_feature = atr / current_price  # 현재 가격 대비 변동성
-        
-        # VWAP (거래량 가중 가격)
-        vwap_data = self.data.iloc[self.current_step-self.vwap_period:self.current_step+1]
-        vwap = np.sum(vwap_data['Close'] * vwap_data['Volume']) / np.sum(vwap_data['Volume'])
-        vwap_feature = (current_price - vwap) / vwap  # 현재 가격과 VWAP의 차이
-        
-        # 2. 거래량 기반 지표
-        volume_score = get_composite_change_score(volume_data[-35:])  # 최근 35개 데이터만 사용
-        
-        # OBV (On Balance Volume)
-        price_diff = price_data.diff()
-        obv = np.sum(np.where(price_diff > 0, volume_data, 
-                             np.where(price_diff < 0, -volume_data, 0)))
-        obv_feature = obv / np.mean(volume_data)  # 평균 거래량 대비 OBV
-        
-        # 3. 포지션 관련 지표
-        position_profit = 0
-        if self.position != FLAT:
-            position_profit = (current_price - self.entry_price) / self.entry_price * self.position
-        
-        # 4. 리스크 관리 지표
-        risk_features = [
-            self.balance_profit_rate,  # 전체 수익률
-            self.failure / (self.success + self.failure + 1e-6),  # 최근 거래 승률
-            position_profit  # 현재 포지션 수익률
-        ]
-        
-        # 5. 추가 시장 상태 지표
-        market_state = [
-            self.data.iloc[self.current_step]['stocRSI'],  # 스토캐스틱 RSI
-            self.data.iloc[self.current_step]['MACD'],  # MACD
-            vwap_feature  # VWAP 대비 현재 가격
-        ]
-        
-        # 모든 특성 결합 (총 15개)
+       
+        # 기술적 지표만 사용 (총 15개)
         state = np.array([
-            current_price / self.entry_price - 1,  # 현재 가격 변화율
-            *ma_features,  # 3개 이동평균선 특성
-            *bb_features,  # 2개 볼린저 밴드 특성
-            atr_feature,  # ATR 특성
-            volume_score,  # 거래량 변화 점수
-            obv_feature,  # OBV 특성
-            *market_state,  # 3개 시장 상태 지표
-            *risk_features  # 3개 리스크 관리 특성
+            # 가격 관련 지표
+            self.data.iloc[self.current_step]['Close'],
+            self.data.iloc[self.current_step]['Open'],
+            self.data.iloc[self.current_step]['High'],
+            self.data.iloc[self.current_step]['Low'],
+            self.data.iloc[self.current_step]['Volume'],
+            
+            # 이동평균선
+            self.data.iloc[self.current_step]['sma_5'],
+            self.data.iloc[self.current_step]['sma_20'],
+            self.data.iloc[self.current_step]['sma_60'],
+            
+            # RSI
+            self.data.iloc[self.current_step]['RSI'],
+            
+            # MACD
+            self.data.iloc[self.current_step]['MACD'],
+            self.data.iloc[self.current_step]['MACD_Signal'],
+            
+            # 볼린저 밴드
+            self.data.iloc[self.current_step]['bb_middle'],
+            self.data.iloc[self.current_step]['bb_std'],
+            self.data.iloc[self.current_step]['bb_upper'],
+            self.data.iloc[self.current_step]['bb_lower'],
+            
+            # 가격 변화율 (수익률 예측을 위한 지표)
+            (self.data.iloc[self.current_step]['Close'] - self.data.iloc[self.current_step-1]['Close']) / self.data.iloc[self.current_step-1]['Close'] if self.current_step > 0 else 0
         ], dtype=np.float32)
         
         return state
@@ -241,42 +192,34 @@ class FuturesEnv5(gym.Env):
         self.price_history.append(current_price)
         done = self.current_step >= len(self.data) - 1
         profit = 0
-        trade_success = False  # 거래 성공 여부
-
-        # 기본 보상 설정 - 포지션 유지 시 약간의 페널티
-        if self.position != FLAT:
-            reward = -0.1  # 포지션 유지 시 페널티 증가
-        else:
-            reward = 0.2  # 중립 포지션은 더 큰 보상 (안전한 포지션 장려)
-
+        trade_success = False
+        profit_rate = 0
+        target_profit_rate = 0.02
+        
+        # 기본 보상 초기화
+        reward = 0
+        
         if self.num > 12*24*7:
             done = True
         
         # 행동에 따른 포지션 방향 결정
-        if action == LONG:  # action = 1 (LONG)
+        if action == LONG:
             if self.position == LONG:
-                # Long 포지션 유지
                 position_direction = LONG
             elif self.position == FLAT:
-                # Flat에서 Long으로 진입
                 position_direction = LONG
-            else:  # self.position == SHORT
-                # Short에서 Flat으로 청산
+            else:
                 position_direction = FLAT
         
-        elif action == SHORT:  # action = -1 (SHORT)
+        elif action == SHORT:
             if self.position == LONG:
-                # Long에서 Flat으로 청산
                 position_direction = FLAT
             elif self.position == FLAT:
-                # Flat에서 Short으로 진입
                 position_direction = SHORT
-            else:  # self.position == SHORT
-                # Short 포지션 유지
+            else:
                 position_direction = SHORT
         
-        else:  # action = 0 (FLAT)
-            # 현재 포지션 유지
+        else:
             position_direction = self.position
 
         # 포지션 변경 시
@@ -288,39 +231,41 @@ class FuturesEnv5(gym.Env):
                 self.size = 0
                 self.position = FLAT
 
-                # 수익에 따른 보상 계산
+                # 수익률 계산
                 profit_rate = profit / self.entry_price
                 
-                # 수익이 발생한 경우 더 큰 보상
-                if profit > 0:
-                    reward += profit_rate * 15  # 수익에 비례한 보상 감소
-                    self.success += 1
-                    trade_success = True  # 거래 성공
-                else:
-                    reward += profit_rate * 10  # 손실에 비례한 페널티 감소
-                    self.failure += 1
+                # 수익률에 따른 보상 계산
+                if profit_rate > 0:  # 수익인 경우
+                    if profit_rate >= target_profit_rate:  # 목표 수익률 달성
+                        reward = 10.0 + (profit_rate * 100)  # 기본 보상 + 수익률 비례 보상
+                        self.success += 1
+                        trade_success = True
+                    else:  # 목표 미달이지만 수익
+                        reward = 5.0 + (profit_rate * 50)  # 중간 보상 + 수익률 비례 보상
+                        self.success += 1
+                        trade_success = True
+                else:  # 손실인 경우
+                    if abs(profit_rate) >= target_profit_rate:  # 큰 손실
+                        reward = -15.0 - (abs(profit_rate) * 100)  # 큰 페널티 + 손실률 비례 페널티
+                        self.failure += 1
+                    else:  # 작은 손실
+                        reward = -5.0 - (abs(profit_rate) * 50)  # 중간 페널티 + 손실률 비례 페널티
+                        self.failure += 1
                 
-                # 연속 손실에 대한 추가 페널티
-                if profit < 0 and self.failure > 1:
-                    reward -= 15  # 연속 손실에 대한 페널티 증가
-            
+                self.total_trade += 1
+                
             self.balance_profit_rate = (self.balance - self.initial_balance) / self.initial_balance 
             
             # 청산 조건 - 큰 손실 방지
-            if self.balance_profit_rate < -0.01:  # 손실 허용 범위 감소
-                reward -= 50  # 큰 손실에 대한 페널티 증가
-                #done = True
-                #self.liquidated = True
+            if self.balance_profit_rate < -0.01:
+                reward -= 10.0  # 큰 손실에 대한 추가 페널티
             # 목표 달성 조건 - 수익 실현
-            elif self.balance_profit_rate > 0.02:  # 목표 수익률 감소
-                reward += 20  # 목표 달성에 대한 보상 감소
-                #done = True
-                #self.clear = True
+            elif self.balance_profit_rate > 0.02:
+                reward += 10.0  # 목표 달성에 대한 추가 보상
 
             # 새로운 포지션 진입
-            if position_direction != FLAT and not done:  # stay_count 체크 제거
-                # 진입 비용 계산
-                trade_ratio = self.max_position_ratio  # 자본의 일부만 사용
+            if position_direction != FLAT and not done:
+                trade_ratio = self.max_position_ratio
                 available_balance = self.balance * (1 - self.trade_fee * self.leverage)
                 position_size = available_balance * self.leverage * trade_ratio / current_price
                 entry_cost = position_size * current_price * self.trade_fee
@@ -329,83 +274,80 @@ class FuturesEnv5(gym.Env):
                 self.size = position_size
                 self.entry_price = current_price
                 
-                # 최고/최저 가격 초기화
                 if self.position == LONG:
                     self.max_price = current_price
                 else:
                     self.min_price = current_price
                 
-                # 포지션 진입 시 약간의 보상 (탐색 유도)
-                reward += 0.2  # 진입 보상 감소
+                # 포지션 진입 시 약간의 보상
+                reward += 0.5
         
         # 포지션 유지 중일 때 손절매 및 트레일링 스탑 로직
         elif self.position != FLAT:
             # 손절매 로직
             if self.position == LONG and (current_price - self.entry_price) / self.entry_price < -self.stop_loss_threshold:
-                # 손절매 실행
                 profit = self.position * (current_price - self.entry_price)
                 self.balance += profit * self.size
                 self.size = 0
                 self.position = FLAT
                 position_direction = FLAT
-                reward += 8  # 손절매 실행에 대한 보상 증가
-                self.logger.render_step_state(f'    - 손절매 실행: {(current_price - self.entry_price) / self.entry_price:.4f}')
+                reward += 5.0  # 손절매 실행에 대한 보상
+                self.logger.render(f'    - 손절매 실행: {(current_price - self.entry_price) / self.entry_price:.4f}')
             elif self.position == SHORT and (self.entry_price - current_price) / self.entry_price < -self.stop_loss_threshold:
-                # 손절매 실행
                 profit = self.position * (current_price - self.entry_price)
                 self.balance += profit * self.size
                 self.size = 0
                 self.position = FLAT
                 position_direction = FLAT
-                reward += 8  # 손절매 실행에 대한 보상 증가
-                self.logger.render_step_state(f'    - 손절매 실행: {(self.entry_price - current_price) / self.entry_price:.4f}')
+                reward += 5.0  # 손절매 실행에 대한 보상
+                self.logger.render(f'    - 손절매 실행: {(self.entry_price - current_price) / self.entry_price:.4f}')
             
             # 트레일링 스탑 로직
             elif self.position == LONG:
-                # 최고 가격 업데이트
                 if current_price > self.max_price:
                     self.max_price = current_price
-                # 트레일링 스탑 실행
                 elif (self.max_price - current_price) / self.max_price > self.trailing_stop:
                     profit = self.position * (current_price - self.entry_price)
                     self.balance += profit * self.size
                     self.size = 0
                     self.position = FLAT
                     position_direction = FLAT
-                    reward += 15  # 트레일링 스탑 실행에 대한 보상 증가
-                    trade_success = profit > 0  # 수익이 발생했으면 거래 성공
-                    self.logger.render_step_state(f'    - 트레일링 스탑 실행: {(self.max_price - current_price) / self.max_price:.4f}')
+                    reward += 10.0  # 트레일링 스탑 실행에 대한 보상
+                    trade_success = profit > 0
+                    self.logger.render(f'    - 트레일링 스탑 실행: {(self.max_price - current_price) / self.max_price:.4f}')
             elif self.position == SHORT:
-                # 최저 가격 업데이트
                 if current_price < self.min_price:
                     self.min_price = current_price
-                # 트레일링 스탑 실행
                 elif (current_price - self.min_price) / self.min_price > self.trailing_stop:
                     profit = self.position * (current_price - self.entry_price)
                     self.balance += profit * self.size
                     self.size = 0
                     self.position = FLAT
                     position_direction = FLAT
-                    reward += 15  # 트레일링 스탑 실행에 대한 보상 증가
-                    trade_success = profit > 0  # 수익이 발생했으면 거래 성공
-                    self.logger.render_step_state(f'    - 트레일링 스탑 실행: {(current_price - self.min_price) / self.min_price:.4f}')
+                    reward += 10.0  # 트레일링 스탑 실행에 대한 보상
+                    trade_success = profit > 0
+                    self.logger.render(f'    - 트레일링 스탑 실행: {(current_price - self.min_price) / self.min_price:.4f}')
         
-        self.position_history.append(self.position)  # 포지션 기록
+        self.position_history.append(self.position)
         self.balance_profit_rate_history.append(self.balance_profit_rate * 100)  
         self.profit_history.append(profit)
         self.balance_history.append(self.balance)
         self.reward_history.append(reward)
+        self.profit_rate_history.append(profit_rate*100)
 
         if done:
             self.returns_history.append(self.current_step)
             self.last_step = self.current_step
             
-            # 종료 시 최종 수익률에 따른 추가 보상/페널티
+            # 최종 수익률에 따른 추가 보상/페널티
             final_profit_rate = (self.balance - self.initial_balance) / self.initial_balance
-            if final_profit_rate > 0:
-                reward += 20  # 수익에 대한 보상 감소
-            elif final_profit_rate < -0.01:  # 손실 허용 범위 감소
-                reward -= 40  # 손실에 대한 페널티 증가
+            if final_profit_rate > 0.02:
+                reward += 20.0 + (final_profit_rate * 100)  # 수익에 대한 보상 + 수익률 비례 보상
+                self.next = True
+                self.next_step += 1
+            elif final_profit_rate < -0.01:
+                reward -= 30.0 - (final_profit_rate * 100)  # 손실에 대한 페널티 + 손실률 비례 페널티
+                self.next = False
         else:
             self.current_step += 1
 
@@ -414,7 +356,8 @@ class FuturesEnv5(gym.Env):
             'clear': self.clear,
             'balance': self.balance,
             'profit_rate': float((self.balance - self.initial_balance) * 100 / self.initial_balance),
-            'trade_success': trade_success  # 거래 성공 여부 추가
+            'trade_success': trade_success,
+            'position': position_direction
         }
 
         self.logger.render_step_state(f'    - num: {self.num}')
@@ -452,4 +395,4 @@ class FuturesEnv5(gym.Env):
         self.logger.render(f'학습 마지막 위치: {self.current_step}')
         self.logger.render(f'Balance: {float(self.balance):.2f}')
         self.logger.render(f'Profit: {float(profit):.2f}, Profit Rate: {float(profit_rate):.2f}%')
-        
+        self.logger.render(f'거래 횟수: {self.total_trade}, 학습 횟수: {self.next_step}')

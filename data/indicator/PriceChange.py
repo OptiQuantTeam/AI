@@ -1,6 +1,6 @@
 import pandas as pd
 
-def CHG(data):
+def PriceChange(data):
     chg = data['Close']/data['Open']
     chg = pd.DataFrame({'CHG':round((chg-1)*100, 2)}, index=data.index)
 
@@ -12,5 +12,5 @@ if __name__ == "__main__":
     data = pd.read_csv('/workspace/data/raw/BTCUSDT/BTCUSDT-1d-2018.csv', index_col=0)
     
     # EMA 계산
-    chg = CHG(data)
+    chg = PriceChange(data)
     print(chg)

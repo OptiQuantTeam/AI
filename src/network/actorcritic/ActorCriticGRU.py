@@ -13,7 +13,7 @@ class ActorCriticGRU(nn.Module):
             hidden_size=hidden_dim,
             num_layers=num_layers,
             batch_first=True,
-            dropout=0.1
+            dropout=0.2
         )
         
         # 특징 추출 레이어
@@ -21,8 +21,10 @@ class ActorCriticGRU(nn.Module):
             nn.LayerNorm(hidden_dim),
             nn.Linear(hidden_dim, 128),
             nn.ReLU(),
+            nn.Dropout(0.2),
             nn.Linear(128, 64),
-            nn.ReLU()
+            nn.ReLU(),
+            nn.Dropout(0.1)
         )
         
         # Actor 네트워크 (정책 네트워크)

@@ -5,9 +5,9 @@ from torch.distributions import Normal
 import numpy as np
 from collections import deque
 import datetime
-import ac
+import network.actorcritic as AC
 
-class PPO_basic:
+class PPO2:
     def __init__(
         self, 
         state_dim, 
@@ -20,9 +20,7 @@ class PPO_basic:
         epochs=10,
         device="cuda" if torch.cuda.is_available() else "cpu"
     ):
-        self.state_dim = state_dim
-        self.action_dim = action_dim
-        self.actor_critic = ac.ActorCritic(state_dim, action_dim).to(device)
+        self.actor_critic = AC.ActorCritic(state_dim, action_dim).to(device)
         #self.actor_critic = ActorCriticLSTM(state_dim, action_dim, hidden_dim=128, lstm_layers=2).to(device)
         self.optimizer = optim.Adam([
             {'params': self.actor_critic.feature_extraction.parameters()},
@@ -31,6 +29,9 @@ class PPO_basic:
             {'params': self.actor_critic.critic.parameters(), 'lr': lr_critic}
         ], lr=lr_actor)
         
+        self.state_dim = state_dim
+        self.action_dim = action_dim
+
         self.gamma = gamma
         self.epsilon = epsilon
         self.epochs = epochs
@@ -44,16 +45,26 @@ class PPO_basic:
         with torch.no_grad():
             direction_mean, direction_std, value = self.actor_critic(state)
             
-        # 포지션 방향 샘플링
-        direction_dist = Normal(direction_mean, direction_std)
-        direction = direction_dist.sample()
-        direction = torch.clamp(direction, -1.0, 1.0)
-        
- 
-        
-        # 로그 확률 계산
-        log_prob= direction_dist.log_prob(direction)
-        action = direction
+            # 표준편차에 최소값 설정하여 탐색 보장
+            min_std = 0.1
+            direction_std = torch.max(direction_std, torch.tensor(min_std).to(self.device))
+            
+            # 정규 분포에서 여러 번 샘플링하여 평균
+            num_samples = 5
+            directions = []
+            for _ in range(num_samples):
+                direction_dist = Normal(direction_mean, direction_std)
+                direction = direction_dist.sample()
+                direction = torch.clamp(direction, -1.0, 1.0)
+                directions.append(direction)
+            
+            # 샘플들의 평균을 최종 행동으로 선택
+            direction = torch.stack(directions).mean(dim=0)
+            
+            # 로그 확률 계산
+            direction_dist = Normal(direction_mean, direction_std)
+            log_prob = direction_dist.log_prob(direction)
+            action = direction
         
         return (
             action.cpu().numpy()[0],
@@ -64,7 +75,9 @@ class PPO_basic:
     def store_transition(self, transition):
         self.memory.append(transition)
     
-    def update(self, batch_size=64):
+    def update(self, batch_size=64, success_rate=None):
+        if len(self.memory) < batch_size:
+            return 0
         # 메모리에서 데이터 추출
         state_batch = []
         action_batch = []
@@ -76,6 +89,7 @@ class PPO_basic:
         
         for transition in self.memory:
             state, action, reward, next_state, log_prob, value, done = transition
+
             state_batch.append(state)
             action_batch.append(action)
             reward_batch.append(reward)
@@ -99,7 +113,7 @@ class PPO_basic:
         gae = 0
         
         with torch.no_grad():
-            next_value = self.actor_critic(next_state_batch)[2]  # value는 5번째 반환값
+            next_value = self.actor_critic(next_state_batch)[2]  # value는 2번째 반환값
             next_value = next_value.squeeze()
             
             for r, v, done, next_v in zip(
@@ -117,6 +131,7 @@ class PPO_basic:
                 
                 returns.insert(0, gae + v)
                 advantages.insert(0, gae)
+                
         
         advantages = torch.FloatTensor(advantages).to(self.device)
         returns = torch.FloatTensor(returns).to(self.device)
@@ -194,6 +209,7 @@ class PPO_basic:
         
         # 메모리 비우기
         self.memory.clear() 
+        return 1
     
     def save_model(self, data, path):
         torch.save(data, path)

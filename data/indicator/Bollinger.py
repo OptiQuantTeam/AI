@@ -11,11 +11,19 @@ def Bollinger(data, window=20, num_std_dev=2):
     upper_band = middle_band + (num_std_dev * std_dev)
     lower_band = middle_band - (num_std_dev * std_dev)
     
+    # 밴드 폭 계산
+    band_width = (upper_band - lower_band) / middle_band
+    
+    # 밴드 폭 변화율 계산
+    band_width_change = band_width.pct_change() * 100
+    
     # 결과 반환
     return pd.DataFrame({
         'Middle Band': middle_band,
         'Upper Band': upper_band,
-        'Lower Band': lower_band
+        'Lower Band': lower_band,
+        'Band Width': band_width,
+        'Band Width Change': band_width_change
     }, index=data.index)
 
 # 예제 데이터 사용

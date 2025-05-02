@@ -1,5 +1,5 @@
 from .Bollinger import Bollinger
-from .CHG import CHG
+from .PriceChange import PriceChange
 from .EMA import EMA
 from .Envelope import Envelope
 from .KeltnerChannel import KeltnerChannel

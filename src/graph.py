@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import matplotlib.gridspec as gridspec
 
 def plot_balance_history(episode_results, positions, path):
     # 데이터를 4등분
@@ -194,92 +195,123 @@ def plot_reward_history(episode_rewards, path):
     plt.savefig(path)
     plt.close()
 
-def plot_episode_metrics(balance_history, price_history, profit_history, actions, balance_profit_rate_history, path):
+def plot_episode_metrics(balance_history, profit_history, price_history, profit_rate_history, actions, balance_profit_rate_history, path=None):
     """
-    단일 에피소드의 학습 지표를 시각화하는 함수
-    
+    에피소드별 성능 지표를 시각화하는 함수
     Args:
-        balance_history (np.array): 한 에피소드의 잔고 기록
-        price_history (np.array): 한 에피소드의 현재가 기록
-        profit_history (np.array): 한 에피소드의 수익 기록
-        actions (np.array): 한 에피소드의 행동 기록
-        balance_profit_rate_history (np.array): 한 에피소드의 수익률 기록
+        balance_history (list): 모든 에피소드의 잔고 기록 리스트
+        profit_history (list): 모든 에피소드의 수익 기록 리스트
+        price_history (list): 모든 에피소드의 가격 기록 리스트
+        profit_rate_history (list): 모든 에피소드의 수익률 기록 리스트
+        actions (list): 모든 에피소드의 행동 기록 리스트
+        balance_profit_rate_history (list): 모든 에피소드의 잔고 수익률 기록 리스트
         path (str): 그래프를 저장할 경로
     """
-    # 1. 에피소드 수익률 계산
-    episode_return = (balance_history[-1] - balance_history[0]) / balance_history[0]
+    # 그래프 크기 및 레이아웃 설정
+    fig = plt.figure(figsize=(15, 10))
+    gs = gridspec.GridSpec(2, 2, height_ratios=[2, 1])
     
-    # 2. 에피소드 승률 계산
-    profit_history = np.array(profit_history)
-    winning_trades = np.sum(profit_history > 0)
-    total_trades = len(profit_history)
-    win_rate = winning_trades / total_trades if total_trades > 0 else 0
+    # 1. 가격, 포지션 및 수익률 그래프
+    ax1 = plt.subplot(gs[0, :])
     
-    # 3. 에피소드 샤프 비율 계산
-    sharpe_ratio = np.sqrt(7) * np.mean(balance_profit_rate_history) / np.std(balance_profit_rate_history)
+    # 가격 그래프 (왼쪽 y축)
+    ax1.plot(price_history, label='Price', color='navy', alpha=0.7)
+    ax1.set_ylabel('Price', fontsize=10, color='navy')
+    ax1.tick_params(axis='y', labelcolor='navy')
     
-    # 4. 에피소드 행동 엔트로피 계산
+    # 수익률 그래프 (오른쪽 y축)
+    ax1_twin = ax1.twinx()
+    ax1_twin.plot(balance_profit_rate_history, color='brown', alpha=0.7, label='Profit Rate')
+    #ax1_twin.set_ylabel('Profit Rate', fontsize=10, color='brown')
+    ax1_twin.tick_params(axis='y', labelcolor='brown')
+    
+    # 수익률 막대 그래프 (하단)
+    ax1_bottom = ax1_twin.twinx()
+    #ax1_bottom.spines['right'].set_position(('outward', 60))
+    colors = ['green' if rate >= 0 else 'red' for rate in profit_rate_history]
+    ax1_bottom.bar(range(len(profit_rate_history)), np.abs(profit_rate_history), 
+                  color=colors, alpha=0.5, label='Trade Profit Rate')
+    ax1_bottom.set_ylabel('Trade Profit Rate (%)', fontsize=10, color='gray')
+    ax1_bottom.tick_params(axis='y', labelcolor='gray')
+    
+    # 포지션 진입/정리 지점 표시
+    for i in range(1, len(actions)):
+        # 포지션 진입 지점
+        if actions[i] != actions[i-1] and actions[i-1] == 0:  # FLAT에서 LONG/SHORT로 진입
+            if actions[i] == 1:  # 롱 진입
+                ax1.scatter(i, price_history[i], color='green', marker='^', s=150, alpha=0.4, label='Enter Long' if i == 1 else "")
+            elif actions[i] == -1:  # 숏 진입
+                ax1.scatter(i, price_history[i], color='red', marker='v', s=150, alpha=0.4, label='Enter Short' if i == 1 else "")
+        
+        # 포지션 정리 지점
+        if actions[i] == 0 and actions[i-1] != 0:  # LONG/SHORT에서 FLAT으로 전환
+            profit = profit_history[i] if i < len(profit_history) else 0
+            if actions[i-1] == 1:  # 롱 포지션 정리
+                if profit > 0:  # 수익 실현
+                    ax1.scatter(i, price_history[i], color='blue', marker='o', s=100, alpha=0.8, label='Close Long with Profit' if i == 1 else "")
+                else:  # 손실 실현
+                    ax1.scatter(i, price_history[i], color='purple', marker='o', s=100, alpha=0.8, label='Close Long with Loss' if i == 1 else "")
+            else:  # 숏 포지션 정리
+                if profit > 0:  # 수익 실현
+                    ax1.scatter(i, price_history[i], color='blue', marker='x', s=100, alpha=0.8, label='Close Short with Profit' if i == 1 else "")
+                else:  # 손실 실현
+                    ax1.scatter(i, price_history[i], color='purple', marker='x', s=100, alpha=0.8, label='Close Short with Loss' if i == 1 else "")
+    
+    # 범례 추가
+    handles, labels = ax1.get_legend_handles_labels()
+    handles2, labels2 = ax1_twin.get_legend_handles_labels()
+    handles3, labels3 = ax1_bottom.get_legend_handles_labels()
+    ax1.legend(handles + handles2 + handles3, labels + labels2 + labels3, loc='upper left', fontsize='small')
+    
+    ax1.set_title('Price, Position and Profit Rate', fontsize=12)
+    ax1.grid(True, alpha=0.3)
+    
+    # 2. 수익/손실 횟수 그래프
+    ax2 = plt.subplot(gs[1, 0])
+    profit_count = sum(1 for p in profit_history if p > 0)
+    loss_count = sum(1 for p in profit_history if p < 0)
+    total_trades = profit_count + loss_count
+    win_rate = profit_count / total_trades if total_trades > 0 else 0
+    
+    ax2.bar(['Profit', 'Loss'], [profit_count, loss_count], 
+            color=['green', 'red'], alpha=0.7)
+    ax2.set_title(f'Trade Count (Win Rate: {win_rate:.2%})', fontsize=12)
+    ax2.set_ylabel('Count', fontsize=10)
+    ax2.grid(True, alpha=0.3)
+    
+    # 3. 행동 분포 그래프
+    ax3 = plt.subplot(gs[1, 1])
     action_indices = np.array(actions).astype(int) + 1
     action_counts = np.bincount(action_indices, minlength=3)
     action_probs = action_counts / len(action_indices)
     entropy = -np.sum(action_probs * np.log2(action_probs + 1e-8))
     
-    # 그래프 생성
-    fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-    fig.suptitle('Episode Learning Metrics', fontsize=16)
-    
-    # 1. 잔고 변화 및 현재가 변화 그래프 (이중 y축 사용)
-    ax1 = axes[0, 0]
-    ax1.plot(balance_history, color='blue', label='Profit')
-    ax1.set_title(f'Profit Rate and Price Change\nReturn: {episode_return:.2%}')
-    ax1.set_xlabel('Time Step')
-    ax1.set_ylabel('Profit Rate', color='blue')
-    ax1.tick_params(axis='y', labelcolor='blue')
-    ax1.grid(True)
-    
-    # 현재가 변화를 위한 두 번째 y축
-    ax2 = ax1.twinx()
-    ax2.plot(price_history, color='red', label='Price', alpha=0.7)
-    ax2.set_ylabel('Price', color='red')
-    ax2.tick_params(axis='y', labelcolor='red')
-    
-    # 범례 추가
-    lines1, labels1 = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
-    
-    # 2. 승률 그래프
-    axes[0, 1].bar(['Win Rate'], [win_rate])
-    axes[0, 1].set_title(f'Win Rate: {win_rate:.2%}')
-    axes[0, 1].set_ylim(0, 1)
-    axes[0, 1].grid(True)
-    
-    # 3. 샤프 비율 그래프
-    axes[1, 0].bar(['Sharpe Ratio'], [sharpe_ratio])
-    axes[1, 0].set_title(f'Sharpe Ratio: {sharpe_ratio:.2f}')
-    axes[1, 0].set_ylim(-100, 100)
-    axes[1, 0].grid(True)
-    
-    # 4. 행동 분포 및 엔트로피 그래프
     action_labels = ['Short', 'Flat', 'Long']
     action_colors = ['red', 'gray', 'green']
-    axes[1, 1].bar(action_labels, action_probs, color=action_colors)
-    axes[1, 1].set_title(f'Action Distribution (Entropy: {entropy:.2f})')
-    axes[1, 1].set_ylim(0, 1)
-    axes[1, 1].grid(True)
+    ax3.bar(action_labels, action_probs, color=action_colors)
+    ax3.set_title(f'Action Distribution (Entropy: {entropy:.2f})', fontsize=12)
+    ax3.set_ylabel('Probability', fontsize=10)
+    ax3.set_ylim(0, 1)
+    ax3.grid(True, alpha=0.3)
     
+    # 그래프 간격 조정
     plt.tight_layout()
-    plt.savefig(path)
+    
+    # 그래프 저장
+    plt.savefig(path, dpi=300, bbox_inches='tight')
     plt.close()
     
-    # 계산된 지표들을 딕셔너리로 반환
-    return {
-        'episode_return': episode_return,
+    # 성능 지표 계산
+    metrics = {
         'win_rate': win_rate,
-        'sharpe_ratio': sharpe_ratio,
+        'profit_count': profit_count,
+        'loss_count': loss_count,
+        'total_trades': total_trades,
         'action_entropy': entropy,
         'action_distribution': dict(zip(action_labels, action_probs))
     }
+    
+    return metrics
 
 def plot_learning_progress(all_balance_history, profit_rate_history, all_sharpe_ratios, episode_rewards, episode_results, path):
     """
@@ -317,11 +349,19 @@ def plot_learning_progress(all_balance_history, profit_rate_history, all_sharpe_
     axes[0, 0].set_ylabel('Win Rate')
     axes[0, 0].set_ylim(0, 1)
     axes[0, 0].grid(True)
-    
+    '''
+    step_num = all_balance_history
+    axes[0, 0].plot(step_num)
+    axes[0, 0].set_title(f'Step Number')
+    axes[0, 0].set_xlabel('Episode')
+    axes[0, 0].set_ylabel('Step Number')
+    axes[0, 0].grid(True)
+    '''
     # 2. 수익률 그래프와 이동평균선 (오른쪽 상단)
     ax2 = axes[0, 1]
     # 수익률 그래프
-    ax2.plot(profit_rate_history, color='gray', alpha=0.5, label='Profit Rate')
+    x = np.arange(len(profit_rate_history))
+    ax2.bar(x, profit_rate_history, color='gray', alpha=0.5, label='Profit Rate')
     
     # 양수/음수 수익률에 따른 색상 구분
     for i, rate in enumerate(profit_rate_history):
@@ -354,7 +394,8 @@ def plot_learning_progress(all_balance_history, profit_rate_history, all_sharpe_
     
     # 4. 보상 변화 그래프
     episode_rewards = np.array(episode_rewards, dtype=float)  # float 타입으로 변환
-    reward_changes = np.diff(episode_rewards)
+    #reward_changes = np.diff(episode_rewards)
+    reward_changes = episode_rewards
     x_values = np.arange(1, len(reward_changes) + 1)
     
     # 기본 변화 선

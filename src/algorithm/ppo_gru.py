@@ -5,7 +5,7 @@ import torch.optim as optim
 from torch.distributions import Normal
 import numpy as np
 from collections import deque
-import ac
+import network.actorcritic as AC
 import datetime
 
 class PPOGRU:
@@ -26,7 +26,13 @@ class PPOGRU:
     ):
         self.state_dim = state_dim
         self.action_dim = action_dim
-        self.actor_critic = ac.ActorCriticGRU(state_dim, action_dim).to(device)
+        self.actor_critic = AC.ActorCriticGRU(state_dim, action_dim).to(device)
+        
+        # 학습률 스케줄링 파라미터 추가
+        self.initial_lr_actor = lr_actor
+        self.initial_lr_critic = lr_critic
+        self.lr_decay = 0.995
+        self.min_lr = 1e-5
         
         self.optimizer = optim.Adam([
             {'params': self.actor_critic.gru.parameters()},
@@ -43,11 +49,30 @@ class PPOGRU:
         self.model_name = model_name
         self.memory = deque()
         
+        # 경험 리플레이 메모리 추가
+        self.replay_buffer = deque(maxlen=10000)
+        self.replay_batch_size = 32
+        self.replay_ratio = 0.2  # 리플레이에서 샘플링할 비율
+        
         # 어텐션 관련 하이퍼파라미터
         self.warmup_steps = 1000
         self.attention_weight = 0.0
         self.attention_weight_increment = 0.001
         self.total_steps = 0
+        
+        # GAE 파라미터 최적화
+        self.gae_lambda = 0.95  # GAE 람다 파라미터
+        self.gae_gamma = 0.99   # GAE 감마 파라미터
+        
+        # 클리핑 범위 동적 조정 파라미터
+        self.initial_epsilon = epsilon
+        self.min_epsilon = 0.05
+        self.epsilon_decay = 0.995
+        self.current_epsilon = epsilon
+        
+        # 배치 정규화 파라미터
+        self.use_batch_norm = True
+        self.batch_norm_momentum = 0.01
         
         # 커리큘럼 학습 파라미터 추가
         self.curriculum_threshold = curriculum_threshold
@@ -67,12 +92,22 @@ class PPOGRU:
         self.current_epsilon = self.epsilon_start
         
         # 확신 기반 거래 파라미터 추가
-        self.confidence_threshold = 0.75  # 거래 확신 임계값
-        self.min_trade_interval = 5  # 최소 거래 간격
+        self.confidence_threshold = 0.85  # 0.75에서 0.85로 증가
+        self.min_trade_interval = 10  # 5에서 10으로 증가
         self.last_trade_step = -self.min_trade_interval  # 마지막 거래 스텝
         self.confidence_history = deque(maxlen=10)  # 확신도 기록
         self.trade_count = 0  # 거래 횟수
         self.successful_trades = 0  # 성공한 거래 횟수
+        
+        # 멀티스텝 학습 파라미터
+        self.n_step = 3  # n-step 리턴 계산
+        self.n_step_buffer = deque(maxlen=self.n_step)
+        
+        # 성능 모니터링
+        self.performance_history = []
+        self.best_performance = float('-inf')
+        self.patience = 20
+        self.patience_counter = 0
 
     def select_action(self, state):
         state = torch.FloatTensor(state).unsqueeze(0).unsqueeze(0).to(self.device)
@@ -140,10 +175,52 @@ class PPOGRU:
         
     def store_transition(self, transition):
         self.memory.append(transition)
+        
+        # n-step 버퍼에 추가
+        self.n_step_buffer.append(transition)
+        
+        # n-step 버퍼가 가득 차면 n-step 리턴 계산
+        if len(self.n_step_buffer) == self.n_step:
+            n_step_return = 0
+            for i, (_, _, reward, _, _, _, _) in enumerate(self.n_step_buffer):
+                n_step_return += (self.gamma ** i) * reward
+            
+            # n-step 리턴으로 첫 번째 전환 업데이트
+            state, action, _, next_state, log_prob, value, done = self.n_step_buffer[0]
+            n_step_transition = (state, action, n_step_return, next_state, log_prob, value, done)
+            
+            # 리플레이 버퍼에 추가
+            self.replay_buffer.append(n_step_transition)
+            
+            # n-step 버퍼에서 첫 번째 전환 제거
+            self.n_step_buffer.popleft()
     
     def update(self, batch_size=64, success_rate=0.0):
         if len(self.memory) < batch_size:
             return 0
+        
+        # 성능 모니터링
+        current_performance = success_rate
+        self.performance_history.append(current_performance)
+        
+        # 조기 종료 검사
+        if current_performance > self.best_performance:
+            self.best_performance = current_performance
+            self.patience_counter = 0
+        else:
+            self.patience_counter += 1
+            
+        if self.patience_counter >= self.patience:
+            #print(f"Early stopping triggered after {len(self.performance_history)} updates")
+            return 0
+        
+        # 학습률 스케줄링
+        for param_group in self.optimizer.param_groups:
+            if 'lr' in param_group:
+                param_group['lr'] = max(param_group['lr'] * self.lr_decay, self.min_lr)
+        
+        # 클리핑 범위 동적 조정
+        self.current_epsilon = max(self.current_epsilon * self.epsilon_decay, self.min_epsilon)
         
         # 커리큘럼 학습: 성공률에 따른 난이도 조정
         if success_rate > self.curriculum_threshold:
@@ -155,9 +232,9 @@ class PPOGRU:
         if self.trade_count > 0:
             trade_success_rate = self.successful_trades / self.trade_count
             if trade_success_rate > 0.7:  # 높은 성공률
-                self.confidence_threshold = max(0.65, self.confidence_threshold - 0.01)  # 임계값 감소
+                self.confidence_threshold = max(0.75, self.confidence_threshold - 0.005)  # 0.65에서 0.75로 증가, 0.01에서 0.005로 감소
             elif trade_success_rate < 0.4:  # 낮은 성공률
-                self.confidence_threshold = min(0.85, self.confidence_threshold + 0.01)  # 임계값 증가
+                self.confidence_threshold = min(0.9, self.confidence_threshold + 0.01)  # 0.85에서 0.9로 증가
         
         # 난이도에 따른 리워드 스케일링
         reward_batch = []
@@ -188,11 +265,27 @@ class PPOGRU:
         action_batch = torch.FloatTensor(np.array(action_batch)).to(self.device)
         reward_batch = torch.FloatTensor(np.array(reward_batch)).to(self.device)
         next_state_batch = torch.FloatTensor(np.array(next_state_batch)).unsqueeze(1).to(self.device)
-        old_log_prob_batch = torch.FloatTensor(np.array(log_prob_batch)).to(self.device)
-        old_value_batch = torch.FloatTensor(np.array(value_batch)).to(self.device)
+        
+        # inhomogeneous shape 문제 해결을 위한 개별 처리
+        old_log_prob_batch = []
+        for log_prob in log_prob_batch:
+            if isinstance(log_prob, float):
+                old_log_prob_batch.append([log_prob])
+            else:
+                old_log_prob_batch.append(log_prob)
+        old_log_prob_batch = torch.FloatTensor(np.array(old_log_prob_batch)).to(self.device)
+        
+        old_value_batch = []
+        for value in value_batch:
+            if isinstance(value, float):
+                old_value_batch.append([value])
+            else:
+                old_value_batch.append(value)
+        old_value_batch = torch.FloatTensor(np.array(old_value_batch)).to(self.device)
+        
         done_batch = torch.FloatTensor(np.array(done_batch)).to(self.device)
         
-        # GAE 계산
+        # GAE 계산 - 개선된 버전
         advantages = []
         returns = []
         gae = 0
@@ -211,15 +304,83 @@ class PPOGRU:
                     delta = r - v
                     gae = delta
                 else:
-                    delta = r + self.gamma * next_v - v
-                    gae = delta + self.gamma * 0.95 * gae
+                    # 그래디언트 요구사항 제거
+                    next_value_detached = next_v.detach()
+                    delta = r + self.gae_gamma * next_value_detached - v
+                    gae = delta + self.gae_gamma * self.gae_lambda * gae
                 
                 returns.insert(0, gae + v)
                 advantages.insert(0, gae)
         
         advantages = torch.FloatTensor(advantages).to(self.device)
         returns = torch.FloatTensor(returns).to(self.device)
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        
+        # 배치 정규화 적용
+        if self.use_batch_norm:
+            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        
+        # 리플레이 버퍼에서 샘플링
+        replay_indices = []
+        if len(self.replay_buffer) > self.replay_batch_size:
+            replay_indices = np.random.choice(
+                len(self.replay_buffer), 
+                size=int(batch_size * self.replay_ratio), 
+                replace=False
+            )
+            
+            # 리플레이 데이터 추가
+            for idx in replay_indices:
+                state, action, reward, next_state, log_prob, value, done = self.replay_buffer[idx]
+                state_batch = torch.cat([state_batch, torch.FloatTensor(state).unsqueeze(0).unsqueeze(0).to(self.device)], dim=0)
+                action_batch = torch.cat([action_batch, torch.FloatTensor(action).unsqueeze(0).to(self.device)], dim=0)
+                reward_batch = torch.cat([reward_batch, torch.FloatTensor([reward]).to(self.device)], dim=0)
+                next_state_batch = torch.cat([next_state_batch, torch.FloatTensor(next_state).unsqueeze(0).unsqueeze(0).to(self.device)], dim=0)
+                
+                # log_prob이 float인 경우 처리
+                if isinstance(log_prob, float):
+                    log_prob_tensor = torch.FloatTensor([log_prob]).to(self.device)
+                else:
+                    log_prob_tensor = torch.FloatTensor(log_prob).unsqueeze(0).to(self.device)
+                
+                # 차원 확인 및 조정
+                if len(old_log_prob_batch.shape) > len(log_prob_tensor.shape):
+                    log_prob_tensor = log_prob_tensor.unsqueeze(-1)
+                elif len(old_log_prob_batch.shape) < len(log_prob_tensor.shape):
+                    old_log_prob_batch = old_log_prob_batch.unsqueeze(-1)
+                
+                old_log_prob_batch = torch.cat([old_log_prob_batch, log_prob_tensor], dim=0)
+                
+                # value가 float인 경우 처리
+                if isinstance(value, float):
+                    value_tensor = torch.FloatTensor([value]).to(self.device)
+                else:
+                    value_tensor = torch.FloatTensor(value).unsqueeze(0).to(self.device)
+                
+                # 차원 확인 및 조정
+                if len(old_value_batch.shape) > len(value_tensor.shape):
+                    value_tensor = value_tensor.unsqueeze(-1)
+                elif len(old_value_batch.shape) < len(value_tensor.shape):
+                    old_value_batch = old_value_batch.unsqueeze(-1)
+                
+                old_value_batch = torch.cat([old_value_batch, value_tensor], dim=0)
+                
+                done_batch = torch.cat([done_batch, torch.FloatTensor([done]).to(self.device)], dim=0)
+                
+                # GAE 재계산
+                next_value = self.actor_critic(torch.FloatTensor(next_state).unsqueeze(0).unsqueeze(0).to(self.device))[2]
+                next_value = next_value.squeeze()
+                
+                if done:
+                    delta = reward - value
+                    gae = delta
+                else:
+                    # 그래디언트 요구사항 제거
+                    next_value_detached = next_value.detach()
+                    delta = reward + self.gae_gamma * next_value_detached - value
+                    gae = delta + self.gae_gamma * self.gae_lambda * gae
+                
+                returns = torch.cat([returns, torch.FloatTensor([gae + value]).to(self.device)], dim=0)
+                advantages = torch.cat([advantages, torch.FloatTensor([gae]).to(self.device)], dim=0)
         
         for _ in range(self.epochs):
             indices = np.random.permutation(len(state_batch))
@@ -270,7 +431,7 @@ class PPOGRU:
                 # 1. Actor Loss - KL 페널티 추가
                 kl_div = 0.5 * ((new_log_prob - old_log_prob) ** 2).mean()
                 surr1 = ratio * advantage
-                surr2 = torch.clamp(ratio, 1-self.epsilon, 1+self.epsilon) * advantage
+                surr2 = torch.clamp(ratio, 1-self.current_epsilon, 1+self.current_epsilon) * advantage
                 actor_loss = -torch.min(surr1, surr2).mean() + 0.01 * kl_div
                 
                 # 2. Critic Loss - Huber Loss 사용
@@ -281,13 +442,13 @@ class PPOGRU:
                 entropy_loss = -0.01 * action_dist.entropy().mean()
                 
                 # 4. 거래 관련 페널티
-                trading_fee = 0.0003
+                trading_fee = 0.0005  # 0.0003에서 0.0005로 증가
                 fee_penalty = trading_fee * torch.abs(action).mean()
-                position_change_penalty = 0.005 * torch.abs(action[1:] - action[:-1]).mean()
+                position_change_penalty = 0.01 * torch.abs(action[1:] - action[:-1]).mean()  # 0.005에서 0.01로 증가
                 
                 # 5. 리스크 관리 손실
-                max_drawdown_penalty = 0.02 * torch.max(torch.cumsum(torch.min(action, torch.zeros_like(action)), dim=0))
-                volatility_penalty = 0.015 * torch.std(action)
+                max_drawdown_penalty = 0.05 * torch.max(torch.cumsum(torch.min(action, torch.zeros_like(action)), dim=0))  # 0.02에서 0.05로 증가
+                volatility_penalty = 0.03 * torch.std(action)  # 0.015에서 0.03로 증가
                 
                 # 6. 어텐션 정규화
                 attention_regularization = 0.01 * torch.mean(torch.abs(attention_weights))
@@ -297,15 +458,15 @@ class PPOGRU:
                 
                 # 전체 손실 함수 조합
                 loss = (
-                    2.0 * actor_loss +  # 액터 손실 가중치 증가
+                    2.0 * actor_loss +  # 액터 손실 가중치 유지
                     0.5 * critic_loss * self.current_difficulty +
-                    0.02 * entropy_loss +  # 엔트로피 가중치 증가
-                    0.0001 * fee_penalty * self.current_difficulty +  # 거래 비용 페널티 감소
-                    0.001 * position_change_penalty * self.current_difficulty +  # 포지션 변경 페널티 감소
-                    0.01 * max_drawdown_penalty * self.current_difficulty +
-                    0.01 * volatility_penalty * self.current_difficulty +
+                    0.05 * entropy_loss +  # 0.02에서 0.05로 증가
+                    0.0002 * fee_penalty * self.current_difficulty +  # 0.0001에서 0.0002로 증가
+                    0.002 * position_change_penalty * self.current_difficulty +  # 0.001에서 0.002로 증가
+                    0.03 * max_drawdown_penalty * self.current_difficulty +  # 0.01에서 0.03으로 증가
+                    0.02 * volatility_penalty * self.current_difficulty +  # 0.01에서 0.02로 증가
                     self.attention_weight * attention_regularization +
-                    0.5 * confidence_loss  # 확신 기반 거래 손실 추가
+                    0.7 * confidence_loss  # 0.5에서 0.7로 증가
                 )
                 
                 self.optimizer.zero_grad()

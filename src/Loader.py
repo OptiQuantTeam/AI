@@ -1,17 +1,21 @@
 import torch
 from pathlib import Path
-import algo
+import algorithm as algo
 import env
 from Logger import Logger, LogLevel
 import datetime
+import numpy as np
+import os
+import json
+from graph import plot_episode_metrics, plot_learning_progress
 
 class Loader():
     def __init__(self, env_path, further=None):
-        self.env = env.FuturesEnv5(path=env_path)
+        self.env = env.FuturesEnv9(path=env_path)
         self.agent, self.model_info = self._set_model() if further is None else self._load_model(further)
         console_level, file_level = self._set_log_level()
         self.logger = Logger(self.agent.model_name, f'logs/{self.agent.model_name}.log', console_level=console_level, file_level=file_level)
-
+        self.env.logger = self.logger
         if self.agent is None:
             self.logger.error("모델을 로드할 수 없습니다.")
             exit(1)
@@ -86,7 +90,7 @@ class Loader():
         learning_params = model.get('learning_params', {})
         gamma = learning_params.get('gamma', 0.99)
         epsilon = learning_params.get('epsilon', 0.2)
-        epochs = learning_params.get('epochs', 10)
+        epochs = learning_params.get('epochs', 20)
         
         # 학습 진행 상태 (새 구조)
         training_state = model.get('training_state', {})
@@ -155,7 +159,7 @@ class Loader():
                     return
                 
         # PPO 에이전트 재생성
-        ppo_agent = algo.PPOGRU(
+        ppo_agent = algo.PPO3(
             state_dim=state_dim,
             action_dim=action_dim,
             model_name=model_name,
@@ -223,9 +227,9 @@ class Loader():
         lr_critic = float(input('lr_critic [default: 1e-3]: ') or "1e-3")
         gamma = float(input('gamma [default: 0.99]: ') or "0.99")
         epsilon = float(input('epsilon [default: 0.2]: ') or "0.2")
-        epochs = int(input('epochs [default: 10]: ') or "10")
+        epochs = int(input('epochs [default: 20]: ') or "20")
 
-        ppo_agent = algo.PPOGRU(
+        ppo_agent = algo.PPO3(
                 state_dim=self.env.observation_space.shape[0],
                 action_dim=self.env.action_space.n,
                 model_name=model_name,
@@ -303,3 +307,427 @@ class Loader():
         }
 
         return ppo_agent, model_info
+
+    def train(self, **kwargs):
+
+        #env.logger = logger if logger is not None else Logger(ppo_agent.model_name, f'logs/{ppo_agent.model_name}.log')
+        
+        self.logger.render_training_start(time=(datetime.datetime.now() + datetime.timedelta(hours=9)).strftime('%Y-%m-%d_%H-%M-%S'))
+
+        # 학습 진행 상황
+        if 'training_state' in self.model_info:
+            training_state = self.model_info['training_state']
+            start_episode = training_state.get('current_episode', 0)
+            end_episode = training_state.get('total_episodes', self.num_episodes)
+            checkpoint_term = training_state.get('checkpoint_term', 100)
+            total_steps = training_state.get('total_steps', 0)
+        # 성능 지표
+        if 'training_results' in self.model_info:
+            training_results = self.model_info['training_results']
+            episode_rewards = training_results.get('rewards_history', [])
+            all_episode_returns = training_results.get('all_episode_returns', [])
+            episode_start_positions = training_results.get('episode_start_positions', [])
+            episode_results = training_results.get('episode_results', [0])
+            profit_rate_history = training_results.get('profit_rate_history', [])
+
+        all_balance_history = []
+        all_sharpe_ratios = []
+        step_num_history = []
+        self.env.num = total_steps  # 전체 스텝 수 복원
+
+        
+        # 이전 학습 시간 로드 (없으면 현재 시간 사용)
+        start_time = self.model_info.get('start_time', (datetime.datetime.now() + datetime.timedelta(hours=9)).strftime('%Y-%m-%d_%H-%M-%S'))
+        
+        is_normal_exit = False
+        episode = start_episode  # try 블록 밖에서 초기화
+        
+        try:
+            for episode in range(start_episode, end_episode):
+                self.logger.render_episode_start(episode + 1)
+                balance_history = []
+                actions = []
+                state = self.env.reset()
+                episode_reward = 0
+                
+                episode_start_positions.append({
+                    'step': self.env.current_step,
+                    'timestamp': str(self.env.data.index[self.env.current_step]),
+                    'price': self.env.data.iloc[self.env.current_step]['Close']
+                })
+                
+                update_count = 0
+                
+                while True:
+                    self.env.num += 1
+                    action, value, log_prob = self.agent.select_action(state)
+                    next_state, reward, done, info = self.env.step(action)
+                    
+                    actions.append(info['position'])
+                    
+                    self.agent.store_transition((state, action, reward, next_state, log_prob, value, done))
+                    
+                    episode_reward += reward
+                    state = next_state
+                    
+                    if len(self.agent.memory) >= 128:
+                        #update_count += agent.update(success_rate=sum(episode_results) / len(episode_results))
+                        update_count += self.agent.update()
+                    balance_history.append(info['balance'])
+                    if done:
+                        profit_rate_history.append(info['profit_rate'])
+                        episode_results.append(1 if self.env.balance > self.env.initial_balance * 1.01 else 0)
+                        update_count += self.agent.update(success_rate=sum(episode_results) / len(episode_results)) if info['liquidated'] else 0
+                        break
+                
+                self.logger.render(f"  반복한 step: {self.env.num}, 에피소드 보상: {episode_reward:.2f}, 업데이트 횟수: {update_count}")
+                self.env.render()
+                self.logger.render_episode_end()
+                
+                episode_rewards.append(episode_reward)
+                final_return = self.env.last_step
+                all_episode_returns.append(final_return)
+                all_balance_history.append(self.env.balance)
+                all_sharpe_ratios.append(np.sqrt(7) * np.mean(self.env.balance_profit_rate_history) / np.std(self.env.balance_profit_rate_history))
+                step_num_history.append(self.env.num)
+
+                # 학습 진행 상황 평가 및 시각화 (50 에피소드마다)
+                if (episode + 1) % 100 == 0:
+                    # 학습 진행 상황 평가 및 시각화
+                    os.makedirs(f'results/{self.agent.model_name}/learning', exist_ok=True)
+                    metrics = plot_episode_metrics(
+                        balance_history=self.env.balance_history,
+                        profit_history=self.env.profit_history,
+                        profit_rate_history=self.env.profit_rate_history,
+                        price_history=self.env.price_history,
+                        actions=actions,
+                        balance_profit_rate_history=self.env.balance_profit_rate_history,
+                        path=f'results/{self.agent.model_name}/learning/{self.agent.model_name}_learning_{episode + 1}.png'
+                    )
+                    
+                    # 학습 지표 로깅
+                    self.logger.render(f"  학습 지표 - 승률: {metrics['win_rate']:.2%}")
+                if (episode + 1) % 500 == 0:
+                    metrics = plot_learning_progress(
+                        all_balance_history=step_num_history,
+                        profit_rate_history=profit_rate_history,
+                        all_sharpe_ratios=all_sharpe_ratios,
+                        episode_rewards=episode_rewards,
+                        episode_results=episode_results,
+                        path=f'results/{self.agent.model_name}/{self.agent.model_name}_result_{episode + 1}.png'
+                    )
+                # 주기적으로 체크포인트 저장
+                if (episode + 1) % checkpoint_term == 0:
+                    checkpoint_data = {
+                        # 모델 기본 정보
+                        'model_name': self.agent.model_name,
+                        'state_dim': self.agent.state_dim,
+                        'action_dim': self.agent.action_dim,
+                        
+                        # 모델 가중치 및 옵티마이저 상태
+                        'actor_critic_state_dict': self.agent.actor_critic.state_dict(),
+                        'indicator_distribution_state_dict': self.agent.indicator_distribution.state_dict(),
+                        'optimizer_state_dict': self.agent.optimizer.state_dict(),
+                        
+                        # 학습 파라미터
+                        'learning_params': {
+                            'gamma': self.agent.gamma,
+                            'epsilon': self.agent.epsilon,
+                            'epochs': self.agent.epochs,
+                            'lr_actor': self.agent.optimizer.param_groups[0]['lr'],
+                            'lr_critic': self.agent.optimizer.param_groups[-1]['lr'],
+                            'batch_size': 32,
+                            'device': str(self.agent.device)
+                        },
+                        
+                        # 학습 진행 상태
+                        'training_state': {
+                            'current_episode': episode + 1,
+                            'total_episodes': self.num_episodes,
+                            'last_step': self.env.last_step,
+                            'checkpoint_term': checkpoint_term,
+                            'total_steps': self.env.num,
+                            'update_counts': update_count if 'update_count' in locals() else 0
+                        },
+                        
+                        # 학습 결과
+                        'training_results': {
+                            'rewards_history': episode_rewards,
+                            'episode_results': episode_results,
+                            'all_episode_returns': all_episode_returns,
+                            'episode_start_positions': episode_start_positions,
+                            'total_episodes': len(all_episode_returns),
+                            'completed_episodes': sum(episode_results),
+                            'win_rate': sum(episode_results) / len(episode_results) * 100 if episode_results else 0,
+                            'profit_rate_history': profit_rate_history if 'profit_rate_history' in locals() else []
+                        },
+                        
+                        # 환경 정보
+                        'environment_info': {
+                            'data_path': self.env.path if hasattr(self.env, 'path') else None,
+                            'total_data_length': len(self.env.data) if hasattr(self.env, 'data') else 0,
+                            'training_period': {
+                                'start': str(self.env.data.index[0]) if hasattr(self.env, 'data') else None,
+                                'end': str(self.env.data.index[-1]) if hasattr(self.env, 'data') else None
+                            }
+                        },
+                        
+                        # 세션 정보
+                        'session_info': {
+                            'session_type': 'checkpoint',
+                            'session_time': (datetime.datetime.now() + datetime.timedelta(hours=9)).strftime('%Y-%m-%d_%H-%M-%S'),
+                            'start_time': start_time,
+                            'log_file': f'logs/{self.agent.model_name}.log',
+                            'previous_checkpoints': self.model_info.get('previous_checkpoints', []),
+                            'previous_episodes': self.model_info.get('start_episode', 0),
+                            'current_session_episodes': episode + 1 - self.model_info.get('start_episode', 0),
+                            'training_sessions': self.model_info.get('training_sessions', 0) + 1
+                        }
+                    }
+                    
+                    self.agent.checkpoint(checkpoint_data, f'checkpoints/{self.agent.model_name}_{(datetime.datetime.now() + datetime.timedelta(hours=9)).strftime("%Y%m%d_%H:%M:%S")}_ep_{episode + 1}.pth')
+                    
+                    self.logger.render(f" <체크포인트 저장됨: {episode + 1}>")
+            
+            is_normal_exit = True
+
+            result = {
+                'total_episodes': len(all_episode_returns),
+                'completed_episodes': sum(episode_results),
+                'win_rate': sum(episode_results) / len(episode_results) * 100 if episode_results else 0
+            }
+
+            self.logger.render_training_result(result=result)
+
+        except KeyboardInterrupt:
+            self.logger.error("\n학습이 사용자에 의해 중단되었습니다.")
+        except Exception as e:
+            self.logger.error(f"\n에러 발생: {str(e)}")
+            raise e
+        finally:
+            try:
+                if is_normal_exit:
+                    self.logger.render_training_end(time=(datetime.datetime.now() + datetime.timedelta(hours=9)).strftime('%Y-%m-%d_%H-%M-%S'))
+                else:
+                    self.logger.render_training_stop(time=(datetime.datetime.now() + datetime.timedelta(hours=9)).strftime('%Y-%m-%d_%H-%M-%S'))
+                
+                time = (datetime.datetime.now() + datetime.timedelta(hours=9)).strftime("%Y%m%d_%H:%M:%S")
+
+                # 체크포인트 데이터 준비
+                checkpoint_data = {
+                    # 모델 기본 정보
+                    'model_name': self.agent.model_name,
+                    'state_dim': self.agent.state_dim,
+                    'action_dim': self.agent.action_dim,
+                    
+                    # 모델 가중치 및 옵티마이저 상태
+                    'actor_critic_state_dict': self.agent.actor_critic.state_dict(),
+                    'indicator_distribution_state_dict': self.agent.indicator_distribution.state_dict(),
+                    'optimizer_state_dict': self.agent.optimizer.state_dict(),
+                    
+                    # 학습 파라미터
+                    'learning_params': {
+                        'gamma': self.agent.gamma,
+                        'epsilon': self.agent.epsilon,
+                        'epochs': self.agent.epochs,
+                        'lr_actor': self.agent.optimizer.param_groups[0]['lr'],
+                        'lr_critic': self.agent.optimizer.param_groups[-1]['lr'],
+                        'batch_size': 32,
+                        'device': str(self.agent.device)
+                    },
+                    
+                    # 학습 진행 상태
+                    'training_state': {
+                        'current_episode': episode + 1,
+                        'total_episodes': self.num_episodes,
+                        'last_step': self.env.last_step,
+                        'checkpoint_term': checkpoint_term,
+                        'total_steps': self.env.num,
+                        'update_counts': update_count if 'update_count' in locals() else 0
+                    },
+                    
+                    # 학습 결과
+                    'training_results': {
+                        'rewards_history': episode_rewards,
+                        'episode_results': episode_results,
+                        'all_episode_returns': all_episode_returns,
+                        'episode_start_positions': episode_start_positions,
+                        'total_episodes': len(all_episode_returns),
+                        'completed_episodes': sum(episode_results),
+                        'win_rate': sum(episode_results) / len(episode_results) * 100 if episode_results else 0,
+                        'profit_rate_history': profit_rate_history if 'profit_rate_history' in locals() else []
+                    },
+
+                    'session_info': {
+                        'session_type': 'new',
+                        'session_time': time,
+                        'log_file': f'logs/{self.agent.model_name}.log'
+                    }
+                }
+                
+                # 메타데이터 저장
+                if 'episode_start_positions' in locals() and episode_start_positions:
+                    start_steps = [pos['step'] for pos in episode_start_positions]
+                    
+                    # 수익률 통계 계산
+                    returns_array = np.array(all_episode_returns) if 'all_episode_returns' in locals() and all_episode_returns else np.array([])
+                    returns_std = float(np.std(returns_array)) if len(returns_array) > 0 else 0
+                    
+                    # 승률 계산
+                    win_rate = sum(episode_results) / len(episode_results) * 100 if episode_results else 0
+                    
+                    # 수익률 데이터
+                    profit_rates = np.array(profit_rate_history) if 'profit_rate_history' in locals() and profit_rate_history else np.array([])
+                    
+                    metadata = {
+                        # 모델 기본 정보
+                        'model_name': self.agent.model_name,
+                        'initial_start_time': start_time,  # 최초 학습 시작 시간
+                        'training_start_time': start_time,  # 이번 학습 시작 시간
+                        'end_time': time,
+                        
+                        # 학습 파라미터
+                        'learning_params': {
+                            'state_dim': self.agent.state_dim,
+                            'action_dim': self.agent.action_dim,
+                            'gamma': self.agent.gamma,
+                            'epsilon': self.agent.epsilon,
+                            'epochs': self.agent.epochs,
+                            'lr_actor': self.agent.optimizer.param_groups[0]['lr'],
+                            'lr_critic': self.agent.optimizer.param_groups[-1]['lr'],
+                            'batch_size': 32,  # 메모리 크기
+                            'device': str(self.agent.device)
+                        },
+                        
+                        # 학습 진행 상태
+                        'training_state': {
+                            'current_episode': episode + 1,
+                            'total_episodes': self.num_episodes,
+                            'last_step': self.env.last_step,
+                            'checkpoint_term': checkpoint_term,
+                            'total_steps': self.env.num if hasattr(self.env, 'num') else 0,
+                            'update_counts': update_count if 'update_count' in locals() else 0
+                        },
+                        
+                        # 학습 결과
+                        'training_results': {
+                            'total_episodes': len(all_episode_returns) if 'all_episode_returns' in locals() else 0,
+                            'completed_episodes': sum(episode_results) if episode_results else 0,
+                            'win_rate': win_rate
+                        },
+                        
+                        # 수익률 통계
+                        'returns_stats': {
+                            'best_return': float(max(returns_array)) if len(returns_array) > 0 else float('-inf'),
+                            'worst_return': float(min(returns_array)) if len(returns_array) > 0 else float('-inf'),
+                            'final_return': float(returns_array[-1]) if len(returns_array) > 0 else float('-inf'),
+                            'mean_return': float(np.mean(returns_array)) if len(returns_array) > 0 else 0,
+                            'return_std': returns_std,
+                            'sharpe_ratio': float(np.mean(returns_array) / returns_std) if returns_std != 0 and len(returns_array) > 0 else 0
+                        },
+                        
+                        # 수익률 데이터 통계
+                        'profit_rate_stats': {
+                            'best_profit_rate': float(max(profit_rates)) if len(profit_rates) > 0 else float('-inf'),
+                            'worst_profit_rate': float(min(profit_rates)) if len(profit_rates) > 0 else float('-inf'),
+                            'final_profit_rate': float(profit_rates[-1]) if len(profit_rates) > 0 else float('-inf'),
+                            'mean_profit_rate': float(np.mean(profit_rates)) if len(profit_rates) > 0 else 0,
+                            'profit_rate_std': float(np.std(profit_rates)) if len(profit_rates) > 0 else 0,
+                            'positive_rate': float(np.sum(profit_rates > 0) / len(profit_rates)) if len(profit_rates) > 0 else 0
+                        },
+                        
+                        # 보상 통계
+                        'reward_stats': {
+                            'total_reward': sum(episode_rewards) if 'episode_rewards' in locals() else 0,
+                            'mean_reward': np.mean(episode_rewards) if 'episode_rewards' in locals() else 0,
+                            'max_reward': max(episode_rewards) if 'episode_rewards' in locals() else float('-inf'),
+                            'min_reward': min(episode_rewards) if 'episode_rewards' in locals() else float('inf'),
+                            'reward_std': float(np.std(episode_rewards)) if 'episode_rewards' in locals() else 0
+                        },
+                        
+                        # 환경 정보
+                        'environment_info': {
+                            'data_path': self.env.path if hasattr(self.env, 'path') else None,
+                            'total_data_length': len(self.env.data) if hasattr(self.env, 'data') else 0,
+                            'training_period': {
+                                'start': str(self.env.data.index[0]) if hasattr(self.env, 'data') else None,
+                                'end': str(self.env.data.index[-1]) if hasattr(self.env, 'data') else None
+                            }
+                        },
+                        
+                        # 세션 정보
+                        'session_info': {
+                            'session_type': 'completed' if is_normal_exit else 'interrupted',
+                            'session_time': time,
+                            'start_time': start_time,
+                            'log_file': f'logs/{self.agent.model_name}.log',
+                            'previous_episodes': start_episode,
+                            'current_session_episodes': episode + 1 - start_episode,
+                            'total_episodes_all_sessions': start_episode + (episode + 1 - start_episode),
+                            'previous_steps': total_steps,
+                            'current_session_steps': self.env.num - total_steps if hasattr(self.env, 'num') else 0,
+                            'training_sessions': self.model_info.get('training_sessions', 0) + 1
+                        },
+                        
+                        # 학습 히스토리
+                        'training_history': {
+                            'previous_sessions': self.model_info.get('training_history', {}).get('previous_sessions', []),
+                            'current_session': {
+                                'session_number': self.model_info.get('training_sessions', 0) + 1,
+                                'start_episode': start_episode,
+                                'end_episode': episode + 1,
+                                'episodes_trained': episode + 1 - start_episode,
+                                'start_time': start_time,
+                                'end_time': time,
+                                'total_steps': self.env.num - total_steps if hasattr(self.env, 'num') else 0,
+                                'win_rate': win_rate,
+                                'mean_profit_rate': float(np.mean(profit_rates)) if len(profit_rates) > 0 else 0
+                            }
+                        }
+                    }
+                
+                if is_normal_exit:
+                    os.makedirs('models', exist_ok=True)
+                    os.makedirs('json', exist_ok=True)
+                    os.makedirs(f'results/{self.agent.model_name}', exist_ok=True)
+                    
+                    # 체크포인트 데이터에 최종 상태 표시
+                    checkpoint_data['session_info']['session_type'] = 'completed'
+                    
+                    self.agent.save_model(checkpoint_data, f'models/{self.agent.model_name}_{time}.pth')
+                    with open(f'json/{self.agent.model_name}_metadata_{time}.json', 'w') as f:
+                        json.dump(metadata, f, indent=4)
+                    
+                    # 최종 학습 진행 상황 평가 및 시각화
+                    metrics = plot_learning_progress(
+                        all_balance_history=step_num_history,
+                        profit_rate_history=profit_rate_history,
+                        all_sharpe_ratios=all_sharpe_ratios,
+                        episode_rewards=episode_rewards,
+                        episode_results=episode_results,
+                        path=f'results/{self.agent.model_name}/{self.agent.model_name}_result_{time}.png'
+                    )
+
+                else:
+                    os.makedirs('checkpoints', exist_ok=True)
+                    os.makedirs('json', exist_ok=True)
+                    
+                    # 체크포인트 데이터에 중단 상태 표시
+                    checkpoint_data['session_info']['session_type'] = 'interrupted'
+                    
+                    self.agent.save_model(checkpoint_data, f'checkpoints/{self.agent.model_name}_{time}.pth')
+                    with open(f'json/{self.agent.model_name}_checkpoint_{time}.json', 'w') as f:
+                        json.dump(metadata, f, indent=4)
+
+                self.logger.render(f" <체크포인트가 저장되었습니다: {time}>")
+                
+            except Exception as save_error:
+                self.logger.error(f" <<체크포인트 저장 중 에러 발생: {str(save_error)}>>")
+        
+        return episode_rewards, self.env.last_step, all_episode_returns, {
+            'total_steps': self.env.num,
+            'start_time': start_time,
+            'episode_start_positions': episode_start_positions,
+            'episode_results': episode_results,
+            'learning_metrics': metrics if 'metrics' in locals() else None
+        }

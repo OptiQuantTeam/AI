@@ -1,9 +1,10 @@
-from train import train
 import torch
 from Loader import Loader
-
+'''
+    포지션 그래프 시작부터 Close Long with Loss 표시되는 버그 수정
+'''
 if __name__ == "__main__":
-    env_path = 'data/preprocess/BTCUSDT/BTCUSDT-5m-new.csv'
+    env_path = 'data/preprocess/BTCUSDT/BTCUSDT-30m-technical4.csv'
     
     while True: 
         print('학습 방법을 선택해주세요.')
@@ -17,17 +18,17 @@ if __name__ == "__main__":
         
         if choice == 1:
             loader = Loader(env_path)
-            train(loader.env, loader.agent, loader.num_episodes, loader.model_info, logger=loader.logger)
+            loader.train()
             break
 
         elif choice == 2:
             loader = Loader(env_path, further=False)
-            train(loader.env, loader.agent, loader.num_episodes, loader.model_info, logger=loader.logger)
+            loader.train()
             break
 
         elif choice == 3:
             loader = Loader(env_path, further=True)
-            train(loader.env, loader.agent, loader.num_episodes, loader.model_info, logger=loader.logger)
+            loader.train()
             break
 
         elif choice == 4:
