@@ -313,7 +313,7 @@ def plot_episode_metrics(balance_history, profit_history, price_history, profit_
     
     return metrics
 
-def plot_learning_progress(all_balance_history, profit_rate_history, all_sharpe_ratios, episode_rewards, episode_results, path):
+def plot_learning_progress(step_num_history, profit_rate_history, episode_rewards, episode_results, path):
     """
     여러 에피소드에 걸친 학습 지표를 시각화하는 함수
     
@@ -321,7 +321,6 @@ def plot_learning_progress(all_balance_history, profit_rate_history, all_sharpe_
         balance_history (list): 모든 에피소드의 잔고 기록 리스트
         cumulative_results (list): 모든 에피소드의 누적 결과 리스트
         profit_rate_history (list): 모든 에피소드의 수익률 기록 리스트
-        all_sharpe_ratios (list): 모든 에피소드의 샤프 비율 리스트
         episode_rewards (list): 모든 에피소드의 보상 리스트
         path (str): 그래프를 저장할 경로
     """
@@ -335,7 +334,6 @@ def plot_learning_progress(all_balance_history, profit_rate_history, all_sharpe_
     #for profit_rate in episode_results:
         win_rates.append(1 if profit_rate > 0 else 0)
     
-    sharpe_ratios = all_sharpe_ratios
     
     # 그래프 생성
     fig, axes = plt.subplots(2, 2, figsize=(15, 12))
@@ -350,7 +348,7 @@ def plot_learning_progress(all_balance_history, profit_rate_history, all_sharpe_
     axes[0, 0].set_ylim(0, 1)
     axes[0, 0].grid(True)
     '''
-    step_num = all_balance_history
+    step_num = step_num_history
     axes[0, 0].plot(step_num)
     axes[0, 0].set_title(f'Step Number')
     axes[0, 0].set_xlabel('Episode')
@@ -461,6 +459,5 @@ def plot_learning_progress(all_balance_history, profit_rate_history, all_sharpe_
     # 계산된 지표들을 딕셔너리로 반환
     return {
         'cumulative_win_rate': np.sum(episode_results) / num_episodes,
-        'avg_sharpe_ratio': np.mean(sharpe_ratios),
         'total_reward': np.sum(episode_rewards)
     }
