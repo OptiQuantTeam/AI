@@ -7,6 +7,8 @@ import datetime
 import network.actorcritic as AC
 import network.indicator as ID
 import json
+import matplotlib.pyplot as plt
+from matplotlib.gridspec import GridSpec
 
 class PPO3:
     def __init__(
@@ -20,6 +22,8 @@ class PPO3:
         epsilon=0.2,
         epochs=10,
         batch_size=32,
+        kl_target=0.01,  # KL 발산 목표값
+        kl_coef=0.5,     # KL 발산 계수
         device="cuda" if torch.cuda.is_available() else "cpu"
     ):
         self.actor_critic = AC.ActorCritic2(state_dim, action_dim).to(device)
@@ -30,7 +34,7 @@ class PPO3:
             {'params': self.actor_critic.actor_direction.parameters()},
             {'params': self.actor_critic.actor_direction_std},            
             {'params': self.actor_critic.critic.parameters(), 'lr': lr_critic},
-            {'params': self.indicator_distribution.final_network.parameters(), 'lr': lr_critic}
+            #{'params': self.indicator_distribution.final_network.parameters(), 'lr': lr_critic}
         ], lr=lr_actor, momentum=0.9, dampening=0, weight_decay=0, nesterov=True)
         
         self.state_dim = state_dim
@@ -43,7 +47,11 @@ class PPO3:
         self.model_name = model_name
         self.batch_size = batch_size
         self.memory = deque()
+        self.performances = deque()
         
+        # KL 발산 관련 파라미터
+        self.kl_target = kl_target
+        self.kl_coef = kl_coef
         
     def select_action(self, state):
         state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
@@ -51,14 +59,35 @@ class PPO3:
         with torch.no_grad():
             value, action_probs, action_logits = self.actor_critic(state)
             pi_I = self.indicator_distribution(state)
-            alpha = 0.3
-            pi = alpha * action_probs + (1 - alpha) * pi_I
             
-            # Categorical 분포에서 액션 샘플링
-            action_dist = torch.distributions.Categorical(pi)
-            action_idx = action_dist.sample()
-            action = action_idx.float() - 1.0
-            log_prob = action_dist.log_prob(action_idx)
+            # Actor network에서 샘플링
+            actor_dist = torch.distributions.Categorical(action_probs)
+            actor_action_idx = actor_dist.sample()
+            actor_action = actor_action_idx.float() - 1.0
+            actor_log_prob = actor_dist.log_prob(actor_action_idx)
+            
+            # Indicator distribution에서 샘플링
+            indicator_dist = torch.distributions.Categorical(pi_I)
+            indicator_action_idx = indicator_dist.sample()
+            indicator_action = indicator_action_idx.float() - 1.0
+            indicator_log_prob = indicator_dist.log_prob(indicator_action_idx)
+            
+            # 두 샘플링 결과가 같은 경우
+            if actor_action_idx == indicator_action_idx:
+                # 두 분포의 평균을 사용
+                alpha = 0.3
+                pi = alpha * action_probs + (1 - alpha) * pi_I
+                action_dist = torch.distributions.Categorical(pi)
+                action_idx = action_dist.sample()
+                action = action_idx.float() - 1.0
+                log_prob = action_dist.log_prob(action_idx)
+            else:
+                # Actor network의 선택을 우선시
+                #action = actor_action
+                #action_idx = actor_action_idx
+                action = indicator_action
+                action_idx = indicator_action_idx
+                log_prob = indicator_log_prob
         
         return (
             action.cpu().numpy()[0],
@@ -134,6 +163,13 @@ class PPO3:
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         
         # PPO 업데이트
+        final_advantage = None
+        final_actor_loss = None
+        final_critic_loss = None
+        final_entropy_loss = None
+        final_total_loss = None
+        final_kl_divergence = None
+        
         for _ in range(self.epochs):
             # 미니배치 생성 (섞지 않고 순차적으로)
             for start_idx in range(0, len(state_batch), self.batch_size):
@@ -163,6 +199,9 @@ class PPO3:
                 new_action = action_idx.float() - 1.0
                 new_log_prob = action_dist.log_prob(action_idx)
                 
+                # KL 발산 계산
+                kl_divergence = (new_log_prob - old_log_prob).mean()
+                
                 # PPO 비율 계산
                 ratio = torch.exp(new_log_prob - old_log_prob)
                 
@@ -173,6 +212,10 @@ class PPO3:
                 surr2 = torch.clamp(ratio, 1-self.epsilon, 1+self.epsilon) * advantage
                 actor_loss = -torch.min(surr1, surr2).mean()
                 
+                # KL 발산 페널티 추가
+                kl_penalty = self.kl_coef * torch.max(torch.zeros_like(kl_divergence), 
+                                                    kl_divergence - self.kl_target)
+                
                 # 2. Critic Loss - Huber Loss
                 value = value.squeeze(-1)
                 critic_loss = nn.SmoothL1Loss()(value, return_)
@@ -182,13 +225,29 @@ class PPO3:
 
                 
                 # 전체 손실 함수
-                loss = actor_loss + 0.5 * critic_loss + entropy_loss
+                loss = actor_loss + 0.5 * critic_loss + entropy_loss + kl_penalty
                 
+                final_advantage = advantage.mean().item()
+                final_actor_loss = actor_loss.item()
+                final_critic_loss = critic_loss.item()
+                final_entropy_loss = entropy_loss.item()
+                final_total_loss = loss.item()
+                final_kl_divergence = kl_divergence.item()
                 # 역전파 및 최적화
                 self.optimizer.zero_grad()
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.actor_critic.parameters(), 0.5)
                 self.optimizer.step()
+        
+        # 성능 지표 저장
+        self.store_performance((
+            final_advantage,
+            final_actor_loss,
+            final_critic_loss,
+            final_entropy_loss,
+            final_total_loss,
+            final_kl_divergence
+        ))
         
         # 메모리 비우기
         self.memory.clear()
@@ -217,20 +276,6 @@ class PPO3:
                 'device': str(self.device)
             }
         }
-        # NumPy 스칼라를 Python 기본 타입으로 변환하는 함수
-        def convert_numpy_scalars(obj):
-            if isinstance(obj, dict):
-                return {k: convert_numpy_scalars(v) for k, v in obj.items()}
-            elif isinstance(obj, list):
-                return [convert_numpy_scalars(v) for v in obj]
-            elif isinstance(obj, np.generic):
-                return obj.item()
-            elif isinstance(obj, np.ndarray):
-                return obj.tolist()
-            return obj
-        
-        # 데이터 변환
-        #converted_data = convert_numpy_scalars(data)
         
         # 변환된 데이터 저장
         torch.save(model_state, path)
@@ -290,69 +335,81 @@ class PPO3:
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(learning_state, f, indent=4, ensure_ascii=False)
     
-    def load_model(self):
-        self.actor_critic.load_state_dict(torch.load(f'models/{self.model_name}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.pth'))
+    def store_performance(self, performance):
+        self.performances.append(performance)
     
-    def load_learning_state(self, path):
-        try:
-            with open(path, 'r', encoding='utf-8') as f:
-                learning_state = json.load(f)
-        except UnicodeDecodeError:
-            # UTF-8 디코딩 실패 시 다른 인코딩 시도
-            with open(path, 'r', encoding='cp949') as f:
-                learning_state = json.load(f)
+    def plot_performance(self, path):
+        # 메모리에서 데이터 추출
+        advantages = []
+        actor_losses = []
+        critic_losses = []
+        entropy_losses = []
+        total_losses = []
+        kl_divergences = []
         
-        training_state = learning_state['training_state']
-        training_results = learning_state['training_results']
-        environment_info = learning_state['environment_info']
-        session_info = learning_state['session_info']
-
-        # 리스트를 numpy 배열로 변환
-        def convert_to_numpy(obj):
-            if isinstance(obj, dict):
-                return {k: convert_to_numpy(v) for k, v in obj.items()}
-            elif isinstance(obj, list):
-                return np.array(obj)
-            return obj
-
-        training_results = convert_to_numpy(training_results)
-
-        info = {
-            # 학습 진행 상태
-            'training_state':{
-                'current_episode': training_state.get('current_episode', 0),
-                'total_episodes': training_state.get('total_episodes', 0),
-                'last_step': training_state.get('last_step', 0),
-                'checkpoint_term': training_state.get('checkpoint_term', 0)
-            },
-
-            # 학습 결과
-            'training_results':{
-                'rewards_history': training_results.get('rewards_history', []),
-                'episode_results': training_results.get('episode_results', []),
-                'completed_episodes': training_results.get('completed_episodes', 0),
-                'win_rate': training_results.get('win_rate', 0),
-                'profit_rate_history': training_results.get('profit_rate_history', []),
-                'all_balance_history': training_results.get('all_balance_history', []),
-                'step_num_history': training_results.get('step_num_history', [])
-            },
-
-            # 환경 정보
-            'environment_info':{
-                'data_path': environment_info.get('data_path', ''),
-                'total_data_length': environment_info.get('total_data_length', 0),
-                'training_period': environment_info.get('training_period', {})
-            },
-
-            # 세션 정보
-            'session_info':{
-                'session_type': session_info.get('session_type', 'new'),
-                'session_time': session_info.get('session_time', datetime.datetime.now().strftime("%Y%m%d_%H%M%S")),
-                'log_file': session_info.get('log_file', ''),
-                'previous_checkpoints': session_info.get('previous_checkpoints', []),
-                'previous_episodes': session_info.get('previous_episodes', 0),
-                'current_session_episodes': session_info.get('current_session_episodes', 0),
-                'training_sessions': session_info.get('training_sessions', 0)
-            }
-        }
-        return info
+        for performance in self.performances:
+            advantage, actor_loss, critic_loss, entropy_loss, total_loss, kl_divergence = performance
+            advantages.append(advantage)
+            actor_losses.append(actor_loss)
+            critic_losses.append(critic_loss)
+            entropy_losses.append(entropy_loss)
+            total_losses.append(total_loss)
+            kl_divergences.append(kl_divergence)
+        
+        # 그래프 스타일 설정
+        plt.style.use('default')
+        fig = plt.figure(figsize=(15, 12))
+        gs = GridSpec(3, 2, figure=fig)
+        
+        # 1. Advantage 분포 히스토그램
+        ax1 = fig.add_subplot(gs[0, 0])
+        ax1.hist(advantages, bins=30, alpha=0.7, edgecolor='black')
+        ax1.axvline(x=0, color='r', linestyle='--', label='Zero Advantage')
+        ax1.axvline(x=np.mean(advantages), color='blue', linestyle='--', label='Mean Advantage')
+        ax1.set_title('Advantage Distribution')
+        ax1.set_xlabel('Advantage')
+        ax1.set_ylabel('Frequency')
+        ax1.legend()
+        
+        # Advantage 통계 정보 추가
+        positive_ratio = sum(1 for x in advantages if x > 0) / len(advantages)
+        ax1.text(0.05, 0.95, 
+                f'Positive Ratio: {positive_ratio:.2%}\n'
+                f'Mean: {np.mean(advantages):.2f}\n'
+                f'Std: {np.std(advantages):.2f}',
+                transform=ax1.transAxes, 
+                verticalalignment='top',
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+        
+        # 2. Policy/Value Loss 라인 차트
+        ax2 = fig.add_subplot(gs[0, 1])
+        ax2.plot(actor_losses, label='Policy Loss', color='blue')
+        ax2.plot(critic_losses, label='Value Loss', color='red')
+        ax2.plot(total_losses, label='Total Loss', color='orange')
+        ax2.set_title('Policy, Value and Total Loss')
+        ax2.set_xlabel('Episode')
+        ax2.set_ylabel('Loss')
+        ax2.legend()
+        
+        # 3. Entropy Loss 라인 차트
+        ax3 = fig.add_subplot(gs[1, :])
+        ax3.plot(entropy_losses, label='Entropy Loss', color='green')
+        ax3.set_title('Entropy Loss')
+        ax3.set_xlabel('Episode')
+        ax3.set_ylabel('Loss')
+        ax3.legend()
+        
+        # 4. KL 발산 라인 차트
+        ax4 = fig.add_subplot(gs[2, :])
+        ax4.plot(kl_divergences, label='KL Divergence', color='purple')
+        ax4.axhline(y=self.kl_target, color='r', linestyle='--', label='KL Target')
+        ax4.set_title('KL Divergence')
+        ax4.set_xlabel('Episode')
+        ax4.set_ylabel('KL Divergence')
+        ax4.legend()
+        
+        plt.tight_layout()
+        plt.savefig(path)
+        plt.close()
+        
+        self.performances.clear()

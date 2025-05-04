@@ -10,27 +10,27 @@ class ActorCritic2(nn.Module):
         # 공통 특징 추출 레이어 (더 깊고 넓은 구조)
         self.feature_extraction = nn.Sequential(
             nn.Linear(state_dim, 512),
-            nn.ReLU(),
+            nn.ELU(),
             nn.Linear(512, 256),
-            nn.ReLU(),
+            nn.ELU(),
+            nn.Linear(256, 256),
+            nn.ELU(),
             nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Linear(128, 512),
-            nn.ReLU(),
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.ReLU()
+            nn.ELU(),
+            nn.Linear(128, 128),
+            nn.ELU(),
         )
         
         # 액터 네트워크 (정책) - 포지션 방향
         self.actor_direction = nn.Sequential(
             nn.Linear(128, 64),
-            nn.ReLU(),
+            nn.ELU(),
             nn.Linear(64, 32),
-            nn.ReLU(),
+            nn.ELU(),
+            nn.Linear(32, 32),
+            nn.ELU(),
             nn.Linear(32, 16),
-            nn.ReLU(),
+            nn.ELU(),
             nn.Linear(16, action_dim),
         )
         
@@ -40,8 +40,14 @@ class ActorCritic2(nn.Module):
         # 크리틱 네트워크 (가치 함수)
         self.critic = nn.Sequential(
             nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, 1)
+            nn.ELU(),
+            nn.Linear(64, 32),
+            nn.ELU(),
+            nn.Linear(32, 32),
+            nn.ELU(),
+            nn.Linear(32, 16),
+            nn.ELU(),
+            nn.Linear(16, 1),
         )
         
     def forward(self, state):

@@ -56,6 +56,7 @@ class FuturesEnv9(gym.Env):
         self.profit_target = 0.02  # 2% 수익 목표
         self.max_position_ratio = 0.2  # 최대 포지션 크기 비율 감소
         self.stop_loss_threshold = 0.02  # 손절매 임계값 감소
+        self.recurrence = 0
                
         # 레버리지에 따른 손실 제한 관련 파라미터
         self.leverage_loss_limits = {
@@ -179,6 +180,7 @@ class FuturesEnv9(gym.Env):
             total_trade: 총 거래 횟수
             consecutive_wins: 연속 수익 횟수
             consecutive_losses: 연속 손실 횟수
+            leverage: 레버리지 초기화
 
             reward_history: 현재 에피소드의 step 별 보상 기록
             balance_profit_rate_history: 현재 에피소드의 step 별 자산 수익률 기록
@@ -191,23 +193,25 @@ class FuturesEnv9(gym.Env):
             state: 다음 상태
         '''
 
-        '''
-        # 일정 확률로 랜덤 시작, 그 외에는 연속적인 시작
-        while True:
-            if np.random.random() < 0.3:
-                self.current_step = np.random.randint(36, len(self.data) - self.max_steps)
-            else:
-                self.current_step = self.last_step + 1
-            if self.current_step < len(self.data) - self.max_steps:
-                break
+        
+        
+        
+        if self.recurrence < 10 and self.recurrence > 0:
+            self.current_step = self.tmp_current
+            self.recurrence += 1
+        else:
+            self.current_step = np.random.randint(36, len(self.data) - self.max_steps)
+            self.recurrence = 0 if self.recurrence == 10 else self.recurrence + 1
+        
         '''
 
         self.current_step = self.last_step + 1
         if self.current_step >= len(self.data) - self.max_steps:
             self.current_step = 100
-        
+        '''
 
         self.last_step = self.current_step
+        self.tmp_current = self.current_step
         self.balance = self.initial_balance
         self.position = FLAT
         self.action = HOLD
@@ -223,6 +227,7 @@ class FuturesEnv9(gym.Env):
         self.total_trade = 0
         self.consecutive_wins = 0  # 연속 수익 횟수 초기화
         self.consecutive_losses = 0  # 연속 손실 횟수 초기화
+        self.leverage = self.initial_leverage
         
         self._adjust_loss_limit()  # 레버리지에 따른 손실 한도 조정
         
@@ -233,7 +238,7 @@ class FuturesEnv9(gym.Env):
         self.balance_history = []
         self.profit_history = []
         self.profit_rate_history = []
-        
+       
         self.logger.render(f"학습 시작 위치: {self.current_step} (전체 데이터 중 {self.current_step/len(self.data)*100:.2f}%)")
         self.logger.render(f"현재 손실 한도: {self.stop_loss_threshold*100:.1f}%")
         

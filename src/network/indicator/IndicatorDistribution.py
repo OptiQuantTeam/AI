@@ -224,9 +224,6 @@ class IndicatorDistribution(nn.Module):
         # 3) 모든 신호 통합
         combined_signal = (
             ema_signal + 
-            stoch_rsi_signal + 
-            macd_signal + 
-            bollinger_signal + 
             stoch_bollinger_signal +
             ema_macd_signal +
             macd_bollinger_signal
