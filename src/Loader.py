@@ -148,6 +148,7 @@ class Loader():
         total_episodes = training_results.get('total_episodes', 0)
         completed_episodes = training_results.get('completed_episodes', 0)
         win_rate = training_results.get('win_rate', 0.0)
+        episode_win_rate = training_results.get('episode_win_rate', [])
         profit_rate_history = training_results.get('profit_rate_history', [])
         all_balance_history = training_results.get('all_balance_history', [])
         step_num_history = training_results.get('step_num_history', [])
@@ -249,6 +250,7 @@ class Loader():
                 'total_episodes': total_episodes,
                 'completed_episodes': completed_episodes,
                 'win_rate': win_rate,
+                'episode_win_rate': episode_win_rate,
                 'profit_rate_history': profit_rate_history,
                 'all_balance_history': all_balance_history,
                 'step_num_history': step_num_history
@@ -334,6 +336,7 @@ class Loader():
                 'total_episodes': 0,
                 'completed_episodes': 0,
                 'win_rate': 0.0,
+                'episode_win_rate': [],
                 'profit_rate_history': [],
                 'all_balance_history': [],
                 'step_num_history': []
@@ -382,6 +385,7 @@ class Loader():
             episode_rewards = training_results.get('rewards_history', [])
             episode_results = training_results.get('episode_results', [])
             win_rate = training_results.get('win_rate', 0.0)
+            episode_win_rate = training_results.get('episode_win_rate', [])
             profit_rate_history = training_results.get('profit_rate_history', [])
             all_balance_history = training_results.get('all_balance_history', [])
             step_num_history = training_results.get('step_num_history', [])
@@ -414,7 +418,7 @@ class Loader():
                     episode_reward += reward
                     state = next_state
                     
-                    if len(self.agent.memory) >= 128:
+                    if len(self.agent.memory) >= self.agent.batch_size:
                         #update_count += agent.update(success_rate=sum(episode_results) / len(episode_results))
                         update_count += self.agent.update()
                     balance_history.append(info['balance'])
@@ -431,7 +435,14 @@ class Loader():
                 episode_rewards.append(episode_reward)
                 all_balance_history.append(self.env.balance)
                 step_num_history.append(self.env.num)
-
+                
+                # 에피소드 내에서 승률 계산
+                profit_count = sum(1 for p in self.env.profit_history if p > 0)
+                loss_count = sum(1 for p in self.env.profit_history if p < 0)
+                total_trades = profit_count + loss_count
+                win_rate = profit_count / total_trades if total_trades > 0 else 0
+                episode_win_rate.append(win_rate)
+                
                 # 학습 진행 상황 평가 및 시각화 (50 에피소드마다)
                 if (episode + 1) % 100 == 0:
                     # 학습 진행 상황 평가 및 시각화
@@ -475,6 +486,7 @@ class Loader():
                             'episode_results': episode_results,
                             'completed_episodes': sum(episode_results),
                             'win_rate': sum(episode_results) / len(episode_results) * 100 if episode_results else 0,
+                            'episode_win_rate': episode_win_rate,
                             'profit_rate_history': profit_rate_history if 'profit_rate_history' in locals() else [],
                             'all_balance_history': all_balance_history if 'all_balance_history' in locals() else [],
                             'step_num_history': step_num_history if 'step_num_history' in locals() else []
@@ -551,6 +563,7 @@ class Loader():
                         'episode_results': episode_results[:episode],
                         'completed_episodes': sum(episode_results[:episode]),
                         'win_rate': sum(episode_results[:episode]) / len(episode_results[:episode]) * 100 if episode_results else 0,
+                        'episode_win_rate': episode_win_rate[:episode],
                         'profit_rate_history': profit_rate_history[:episode],
                         'all_balance_history': all_balance_history[:episode],
                         'step_num_history': step_num_history[:episode]
@@ -621,7 +634,11 @@ class Loader():
                     # 학습 결과
                     'training_results': {
                         'completed_episodes': sum(episode_results) if episode_results else 0,
-                        'win_rate': win_rate
+                        'win_rate': win_rate,
+                        'episode_win_rate': episode_win_rate,
+                        'mean_episode_win_rate': float(np.mean(episode_win_rate)) if len(episode_win_rate) > 0 else 0,
+                        'max_episode_win_rate': max(episode_win_rate) if len(episode_win_rate) > 0 else 0,
+                        'min_episode_win_rate': min(episode_win_rate) if len(episode_win_rate) > 0 else 0
                     },
                     
                     # 수익률 통계
@@ -686,6 +703,7 @@ class Loader():
                             'start_time': start_time,
                             'end_time': time,
                             'win_rate': win_rate,
+                            'mean_episode_win_rate': float(np.mean(episode_win_rate)) if len(episode_win_rate) > 0 else 0,
                             'mean_profit_rate': float(np.mean(profit_rates)) if len(profit_rates) > 0 else 0
                         }
                     }
@@ -754,6 +772,7 @@ class Loader():
             episode_rewards = training_results.get('rewards_history', [])
             episode_results = training_results.get('episode_results', [])
             win_rate = training_results.get('win_rate', 0.0)
+            episode_win_rate = training_results.get('episode_win_rate', [])
             profit_rate_history = training_results.get('profit_rate_history', [])
             all_balance_history = training_results.get('all_balance_history', [])
             step_num_history = training_results.get('step_num_history', [])
@@ -797,6 +816,7 @@ class Loader():
                 episode_rewards.append(episode_reward)
                 all_balance_history.append(self.env.balance)
                 step_num_history.append(self.env.num)
+                episode_win_rate.append(sum(1 if p > 0 else 0 for p in self.env.profit_history) / len(self.env.profit_history))
 
             
             is_normal_exit = True
@@ -833,6 +853,7 @@ class Loader():
                         'episode_results': episode_results[:episode],
                         'completed_episodes': sum(episode_results[:episode]),
                         'win_rate': sum(episode_results[:episode]) / len(episode_results[:episode]) * 100 if episode_results else 0,
+                        'episode_win_rate': episode_win_rate[:episode],
                         'profit_rate_history': profit_rate_history[:episode],
                         'all_balance_history': all_balance_history[:episode],
                         'step_num_history': step_num_history[:episode]
@@ -903,7 +924,11 @@ class Loader():
                     # 학습 결과
                     'training_results': {
                         'completed_episodes': sum(episode_results) if episode_results else 0,
-                        'win_rate': win_rate
+                        'win_rate': win_rate,
+                        'episode_win_rate': episode_win_rate,
+                        'mean_episode_win_rate': float(np.mean(episode_win_rate)) if len(episode_win_rate) > 0 else 0,
+                        'max_episode_win_rate': max(episode_win_rate) if len(episode_win_rate) > 0 else 0,
+                        'min_episode_win_rate': min(episode_win_rate) if len(episode_win_rate) > 0 else 0
                     },
                     
                     # 수익률 통계
@@ -968,6 +993,7 @@ class Loader():
                             'start_time': start_time,
                             'end_time': time,
                             'win_rate': win_rate,
+                            'mean_episode_win_rate': float(np.mean(episode_win_rate)) if len(episode_win_rate) > 0 else 0,
                             'mean_profit_rate': float(np.mean(profit_rates)) if len(profit_rates) > 0 else 0
                         }
                     }
