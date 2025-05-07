@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 import gym
 from gym import spaces
-from preprocess import preprocess_data
 
 
 # position constant
@@ -15,7 +14,7 @@ BUY = 1
 SELL = -1
 HOLD = 0
 
-class FuturesEnv2(gym.Env):
+class FuturesEnv(gym.Env):
     def __init__(self, path=None):
         self.path = path
         self.initial_balance = 100000000
@@ -26,18 +25,58 @@ class FuturesEnv2(gym.Env):
         self.load_data()
         self.returns_history = []
         self.max_steps = 1000
-        self.action_space = spaces.Discrete(3, start=-1)
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(5,), dtype=np.float32)
+        self.action_space = spaces.Box(low=-1.0, high=1.0, dtype=np.float32)
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(6,), dtype=np.float32)
 
 
-    def load_data(self):
+    def _load_data(self):
         data = pd.read_csv(self.path)
-        self.data = preprocess_data(data)
+        self.data = self._preprocess_data(data)
+
+    def _preprocess_data(self, df):
+        """데이터 전처리: 결측치 처리 및 정규화"""
+        # 필요한 컬럼만 선택
+        #df = df[['Open', 'Close', 'Volume', 'CHG', 'stocRSI', 'MACD']]
+        df = df[['Open', 'Close', 'High', 'Low', 'Volume', 'EMA_4_slope', \
+                 'EMA_12_slope', 'EMA_24_slope', 'stochRSI', 'MACD', 'MACD_Signal', \
+                    'Divergence Signal', 'Trade Signal', 'Cross Signal', 'bb_width', \
+                        'bb_width_change', 'price_change']]
+
+        
+        # 결측치 처리
+        #df = df.fillna(method='ffill')  # 앞의 값으로 채우기
+        df = df.ffill()
+        df = df.bfill()
+        #df = df.fillna(method='bfill')  # 뒤의 값으로 채우기
+        
+        # 이상치 제거 (극단값 제거)
+        #for column in ['Open', 'Close', 'Volume', 'CHG']:
+        for column in ['Open', 'Close', 'High', 'Low', 'Volume', 'EMA_4_slope', \
+                       'EMA_12_slope', 'EMA_24_slope', 'stochRSI', 'MACD', 'MACD_Signal', \
+                        'Divergence Signal', 'Trade Signal', 'Cross Signal', 'bb_width', \
+                            'bb_width_change', 'price_change']:
+            
+            q1 = df[column].quantile(0.01)
+            q3 = df[column].quantile(0.99)
+            df[column] = df[column].clip(q1, q3)
+        
+        # 정규화
+        '''
+        for column in ['Open', 'Close', 'Volume', 'CHG']:
+            mean = df[column].mean()
+            std = df[column].std()
+            df[column] = (df[column] - mean) / (std + 1e-8)
+        '''
+        # stocRSI와 MACD는 이미 정규화된 형태이므로 극단값만 처리
+        #df['stocRSI'] = df['stocRSI'].clip(0, 100)
+        #df['MACD'] = df['MACD'].clip(-10, 10)  # 적절한 범위로 조정
+            
+        return df
         
     
     def reset(self):
         # 전체 데이터 길이에서 랜덤한 시작 위치 선택
-        self.current_step = np.random.randint(36, len(self.data) - self.max_steps)
+        self.current_step = np.random.randint(0, len(self.data) - self.max_steps)
         # 초기 상태 설정
         self.balance = self.initial_balance
         self.position = FLAT
@@ -56,43 +95,27 @@ class FuturesEnv2(gym.Env):
         return self._next_observation()
     
     def _next_observation(self):
-
-        def get_composite_change_score(data):
-            short_term = np.mean(np.diff(data, n=1))
-
-            mid_term = np.mean(np.diff(data, n=5))
-
-            long_term = np.mean(np.diff(data, n=21))
-            
-            weights = [0.5, 0.3, 0.2]
-            conposite_score = np.average([short_term, mid_term, long_term], weights=weights)
-            return np.tanh(conposite_score)
-        
-
-        state = np.array([self.data.iloc[self.current_step]['Close'], get_composite_change_score([self.data.iloc[self.current_step-35:self.current_step+1]['Volume']]),
-                          get_composite_change_score([self.data.iloc[self.current_step-35:self.current_step+1]['CHG']]), get_composite_change_score([self.data.iloc[self.current_step-35:self.current_step+1]['stocRSI']]), 
-                          get_composite_change_score([self.data.iloc[self.current_step-35:self.current_step+1]['MACD']])], dtype=np.float32)
-        return state
+        return np.array([self.data.iloc[self.current_step]['Open'], self.data.iloc[self.current_step]['Close'], self.data.iloc[self.current_step]['Volume'], 
+                         self.data.iloc[self.current_step]['CHG'], self.data.iloc[self.current_step]['stocRSI'], self.data.iloc[self.current_step]['MACD']], dtype=np.float32)
         
     def step(self, action):
         current_price = self.data.iloc[self.current_step]['Close']
         done = self.current_step >= len(self.data) - 1
         profit = 0
         reward = 0
-        action = action[-1]
         #reward = -self.num
         
 
-        if action > 0.3:
-            position_direction = LONG
-        elif action < -0.3:
-            position_direction = SHORT
+        if action > 0:
+            position_direction = 1
+        elif action < 0:
+            position_direction = -1
         else:
-            position_direction = FLAT
+            position_direction = 0
 
         if self.position != position_direction:
             # 기존 포지션 청산
-            if self.position != HOLD:
+            if self.position != 0:
                 profit = self.position * (current_price - self.entry_price) * self.size
                 self.balance += profit
                 '''
@@ -125,10 +148,9 @@ class FuturesEnv2(gym.Env):
             
             
             # 새로운 포지션 진입
-            if position_direction != FLAT and not done:
+            if position_direction != 0 and not done:
                 # 진입 비용 계산
-                #trade_ratio = abs(action)
-                trade_ratio = 1     # 전량
+                trade_ratio = abs(action)
                 position_size = self.balance * self.leverage * trade_ratio / current_price
                 entry_cost = position_size * current_price * self.trade_fee
                 self.balance -= entry_cost
