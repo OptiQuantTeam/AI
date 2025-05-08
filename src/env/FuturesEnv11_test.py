@@ -14,7 +14,7 @@ BUY = 1
 SELL = -1
 HOLD = 0
 
-class FuturesEnv9(gym.Env):
+class FuturesEnv11_test(gym.Env):
     def __init__(self, path=None, logger=None):
         '''
         환경의 초기 설정값
@@ -57,21 +57,22 @@ class FuturesEnv9(gym.Env):
         self.max_position_ratio = 1  # 최대 포지션 크기 비율 감소
         self.stop_loss_threshold = 0.02  # 손절매 임계값 감소
         self.recurrence = 0
+        self.test = False
                
         # 레버리지에 따른 손실 제한 관련 파라미터
         self.leverage_loss_limits = {
             4.0: 0.10,  # 2배 레버리지일 때 10%
-            3.0: 0.75,  # 1.8배 레버리지일 때 9%
-            2.0: 0.5,  # 1.6배 레버리지일 때 8%
-            1.0: 0.25,  # 1.4배 레버리지일 때 7%
+            3.0: 0.075,  # 1.8배 레버리지일 때 9%
+            2.0: 0.05,  # 1.6배 레버리지일 때 8%
+            1.0: 0.025,  # 1.4배 레버리지일 때 7%
         }
         
         # 레버리지에 따른 포지션 비중 조절 파라미터
         self.leverage_position_ratios = {
             4.0: 0.3,  # 4배 레버리지일 때 20% 포지션
-            3.0: 0.3,  # 3배 레버리지일 때 30% 포지션
-            2.0: 0.4,  # 2배 레버리지일 때 40% 포지션
-            1.0: 0.5   # 1배 레버리지일 때 50% 포지션
+            3.0: 0.4,  # 3배 레버리지일 때 30% 포지션
+            2.0: 0.5,  # 2배 레버리지일 때 40% 포지션
+            1.0: 0.6   # 1배 레버리지일 때 50% 포지션
         }
         
         self._load_data()
@@ -80,7 +81,7 @@ class FuturesEnv9(gym.Env):
         self.observation_space = spaces.Box(
             low=-np.inf, 
             high=np.inf, 
-            shape=(12,),  # 상태 공간 확장
+            shape=(18,),  # 상태 공간 확장
             dtype=np.float32
         )
         self.action_space = spaces.Discrete(3, start=-1)
@@ -102,10 +103,13 @@ class FuturesEnv9(gym.Env):
         데이터 전처리: 결측치 처리 및 정규화
         '''
         # 필요한 컬럼만 선택
-        columns = ['Open', 'Close', 'High', 'Low', 'Volume', 'EMA_4_slope', \
-                 'EMA_12_slope', 'EMA_24_slope', 'stochRSI', 'MACD', 'MACD_Signal', \
-                    'Divergence Signal', 'Trade Signal', 'Cross Signal', 'bb_width', \
-                        'bb_width_change', 'price_change']
+        columns = ['Open', 'Close', 'High', 'Low', 'Volume',
+                'ha_close', 'ha_open', 'ha_high', 'ha_low',
+                'ha_body', 'ha_lower_wick', 'ha_upper_wick',
+                'ha_signal', 'ema_200', 'ema_200_signal',
+                'stoch_rsi', 'stoch_signal',
+                'bb_middle', 'bb_std', 'bb_upper', 'bb_lower',
+                'bb_width', 'bb_width_change']
         df = df[columns]
 
         # 결측치 처리
@@ -211,14 +215,7 @@ class FuturesEnv9(gym.Env):
         '''
 
         
-        
-        
-        if self.recurrence < 10 and self.recurrence > 0:
-            self.current_step = self.tmp_current
-            self.recurrence += 1
-        else:
-            self.current_step = np.random.randint(36, len(self.data) - self.max_steps)
-            self.recurrence = 0 if self.recurrence == 10 else self.recurrence + 1
+        self.current_step = 0
         
         '''
 
@@ -271,33 +268,30 @@ class FuturesEnv9(gym.Env):
         # 기술적 지표만 사용 (총 17개)
         state = np.array([
             # 가격 관련 지표
-            self.data.iloc[self.current_step]['Close'],
             self.data.iloc[self.current_step]['Open'],
+            self.data.iloc[self.current_step]['Close'],
             self.data.iloc[self.current_step]['High'],
             self.data.iloc[self.current_step]['Low'],
             self.data.iloc[self.current_step]['Volume'],
-            
-            # 이동평균선
-            self.data.iloc[self.current_step]['EMA_4_slope'],
-            self.data.iloc[self.current_step]['EMA_12_slope'],
-            self.data.iloc[self.current_step]['EMA_24_slope'],
-            
-            # RSI
-            self.data.iloc[self.current_step]['stochRSI'],
-            
-            # MACD
-            self.data.iloc[self.current_step]['MACD'],
-            self.data.iloc[self.current_step]['MACD_Signal'],
-            self.data.iloc[self.current_step]['Divergence Signal'],
-            self.data.iloc[self.current_step]['Trade Signal'],
-            self.data.iloc[self.current_step]['Cross Signal'],
-            
-            # 볼린저 밴드
+
+            self.data.iloc[self.current_step]['ha_open'],
+            self.data.iloc[self.current_step]['ha_close'],
+            self.data.iloc[self.current_step]['ha_high'],
+            self.data.iloc[self.current_step]['ha_low'],
+            self.data.iloc[self.current_step]['ha_body'],
+            self.data.iloc[self.current_step]['ha_lower_wick'],
+            self.data.iloc[self.current_step]['ha_upper_wick'],
+            self.data.iloc[self.current_step]['ema_200'],
+            self.data.iloc[self.current_step]['ema_200_signal'],
+            self.data.iloc[self.current_step]['stoch_rsi'],
+            self.data.iloc[self.current_step]['stoch_signal'],
+            self.data.iloc[self.current_step]['bb_middle'],
+            self.data.iloc[self.current_step]['bb_std'],
+            self.data.iloc[self.current_step]['bb_upper'],
+            self.data.iloc[self.current_step]['bb_lower'],
             self.data.iloc[self.current_step]['bb_width'],
             self.data.iloc[self.current_step]['bb_width_change'],
-            
-            # 가격 변화율
-            self.data.iloc[self.current_step]['price_change'],
+            self.data.iloc[self.current_step]['ha_signal']
 
         ], dtype=np.float32)
         
@@ -339,9 +333,6 @@ class FuturesEnv9(gym.Env):
             action_reward += 0.1  # HOLD에 대한 작은 보상
             
         
-        # 학습 시간 설정
-        if self.num > 7 * 24 * 8:
-            done = True
             
         # 수익 목표 달성 시 추가 보상
         if self.balance > self.initial_balance * (1 + self.profit_target):
@@ -444,6 +435,9 @@ class FuturesEnv9(gym.Env):
             position_reward = unrealized_profit  # 미실현 손익에 대한 보상
         else:
             position_reward = 0
+
+        if self.balance < self.initial_balance * 0.3:
+            done = True
 
         # 최종 보상 계산 (즉각적인 보상 + 청산 보상)
         total_reward = action_reward + (exit_reward if 'exit_reward' in locals() else position_reward)
