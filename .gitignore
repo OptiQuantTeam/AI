@@ -1,1 +1,8 @@
-.env
+*.csv
+*.json
+*.png
+*.pth
+*.pyc
+*/__pycache__
+*.log
+*.log.*
