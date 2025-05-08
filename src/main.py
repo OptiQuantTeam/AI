@@ -4,7 +4,8 @@ from Loader import Loader
     포지션 그래프 시작부터 Close Long with Loss 표시되는 버그 수정
 '''
 if __name__ == "__main__":
-    env_path = 'data/preprocess/BTCUSDT/BTCUSDT-30m-technical4.csv'
+    env_path = 'data/preprocess/BTCUSDT/BTCUSDT-30m-HEIKIN_ASHI_200EMA.csv'
+    env_path_test = 'data/preprocess/BTCUSDT/BTCUSDT-30m-HEIKIN_ASHI_200EMA_test.csv'
     
     while True: 
         print('학습 방법을 선택해주세요.')
@@ -17,17 +18,18 @@ if __name__ == "__main__":
         choice = int(input('선택: '))
         
         if choice == 1:
-            loader = Loader(env_path)
+            loader = Loader(env_path, env_path_test)
             loader.train()
+            loader.test()
             break
 
         elif choice == 2:
-            loader = Loader(env_path, further=False)
+            loader = Loader(env_path, env_path_test, further=False)
             loader.train()
             break
 
         elif choice == 3:
-            loader = Loader(env_path, further=True)
+            loader = Loader(env_path, env_path_test, further=True)
             loader.train()
             break
 

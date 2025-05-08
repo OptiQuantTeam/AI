@@ -1,1 +1,2 @@
 from .IndicatorDistribution import IndicatorDistribution
+from .IndicatorDistribution2 import IndicatorDistribution2

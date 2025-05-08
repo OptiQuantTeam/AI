@@ -47,7 +47,7 @@ class IndicatorDistribution(nn.Module):
         batch_size = state.shape[0]
         
         # 1) 기본 확률 정의
-        default_probs = torch.tensor([0.0, 1.0, 0.0], device=state.device)
+        default_probs = torch.tensor([0.0, 1.5, 0.0], device=state.device)
         default_logits = default_probs.unsqueeze(0).expand(batch_size, -1)
         
         # 2) 각 지표별 신호 생성

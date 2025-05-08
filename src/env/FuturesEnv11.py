@@ -53,7 +53,7 @@ class FuturesEnv11(gym.Env):
         self.trade_fee = 0.0002
         self.max_steps = 2100
         self.min_steps = 2048  # PPO 배치 사이즈를 고려한 최소 스텝 수
-        self.profit_target = 0.02  # 2% 수익 목표
+        self.profit_target = 0.1  # 10% 수익 목표
         self.max_position_ratio = 1  # 최대 포지션 크기 비율 감소
         self.stop_loss_threshold = 0.02  # 손절매 임계값 감소
         self.recurrence = 0
@@ -284,10 +284,13 @@ class FuturesEnv11(gym.Env):
             self.data.iloc[self.current_step]['ha_body'],
             self.data.iloc[self.current_step]['ha_lower_wick'],
             self.data.iloc[self.current_step]['ha_upper_wick'],
+
             self.data.iloc[self.current_step]['ema_200'],
             self.data.iloc[self.current_step]['ema_200_signal'],
+            
             self.data.iloc[self.current_step]['stoch_rsi'],
             self.data.iloc[self.current_step]['stoch_signal'],
+            
             self.data.iloc[self.current_step]['bb_middle'],
             self.data.iloc[self.current_step]['bb_std'],
             self.data.iloc[self.current_step]['bb_upper'],
@@ -337,7 +340,7 @@ class FuturesEnv11(gym.Env):
             
         
         # 학습 시간 설정
-        if self.num > 7 * 24 * 8:
+        if self.num > 7 * 24 * 2:
             done = True
             
         # 수익 목표 달성 시 추가 보상
