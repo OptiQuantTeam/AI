@@ -4,3 +4,5 @@ from .ActorCriticBase import ActorCriticBase
 from .ActorCriticLSTM import ActorCriticLSTM
 from .ActorCriticWithAttention import ActorCriticWithAttention
 from .ActorCriticGRU import ActorCriticGRU
+from .RNNPolicy import RNNPolicy
+from .SequenceExperience import SequenceExperience
