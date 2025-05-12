@@ -103,7 +103,7 @@ class Logger:
         self.logger.info(message)
 
     def render_episode_end(self, success_episodes_rate):
-        self.logger.error(f'에피소드 성공률(수익률이 1% 이상인 경우 성공): {success_episodes_rate*100:.2f}%')
+        self.logger.error(f'에피소드 성공률: {success_episodes_rate*100:.2f}%')
         self.logger.error('========================================================')
 
     def render_training_result(self, result):

@@ -7,6 +7,9 @@ from .FuturesEnv6 import FuturesEnv6
 from .FuturesEnv7 import FuturesEnv7
 from .FuturesEnv8 import FuturesEnv8
 from .FuturesEnv9 import FuturesEnv9
+from .FuturesEnv11 import FuturesEnv11
+from .FuturesEnv11_test import FuturesEnv11_test
+
 
 
 

@@ -109,8 +109,8 @@ if __name__ == '__main__':
         date_string2 = str(year)+'-12-31 23:59:59'
         timestamp2 = int(time.mktime(datetime.strptime(date_string2, '%Y-%m-%d %H:%M:%S').timetuple())*1000)
 
-        df = get_klines("BTCUSDT", "30m", start_time=timestamp, end_time=timestamp2, limit=1000)
+        df = get_klines("BTCUSDT", "15m", start_time=timestamp, end_time=timestamp2, limit=1000)
         # 디렉토리가 없으면 생성
         os.makedirs("/workspace/data/raw/BTCUSDT", exist_ok=True)
-        df.to_csv(f"/workspace/data/raw/BTCUSDT/BTCUSDT-30m-{year}.csv")
+        df.to_csv(f"/workspace/data/raw/BTCUSDT/BTCUSDT-15m-test-{year}.csv")
         year+=1

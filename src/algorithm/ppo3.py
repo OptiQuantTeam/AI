@@ -27,7 +27,7 @@ class PPO3:
         device="cuda" if torch.cuda.is_available() else "cpu"
     ):
         self.actor_critic = AC.ActorCritic2(state_dim, action_dim).to(device)
-        self.indicator_distribution = ID.IndicatorDistribution(state_dim, action_dim).to(device)
+        self.indicator_distribution = ID.IndicatorDistribution2(state_dim, action_dim).to(device)
         
         self.optimizer = optim.SGD([
             {'params': self.actor_critic.feature_extraction.parameters()},

@@ -105,7 +105,7 @@ def create_technical_indicators(ticker='BTCUSDT', interval='1d'):
 
 def create_technical_indicators2(ticker='BTCUSDT', interval='1d'):
     data = pd.DataFrame()
-    year=2017
+    year=2023
     while year <= 2023:
         path = f'/workspace/data/raw/{ticker}/{ticker}-{interval}-{year}.csv'
         df = pd.read_csv(path, index_col=0)
@@ -134,7 +134,7 @@ def create_technical_indicators2(ticker='BTCUSDT', interval='1d'):
              (data['ha_body'] > 0.5), 'ha_signal'] = -1
 
     """200 EMA 계산"""
-    data['ema_200'] = data['Close'].ewm(span=9600).mean()    # 30분봉 기준 200일 (200 * 48)
+    data['ema_200'] = data['Close'].ewm(span=19200).mean()    # 15분봉 기준 200일 
     data['ema_200_signal'] = 0
     data.loc[data['Close'] > data['ema_200'], 'ema_200_signal'] = 1
     data.loc[data['Close'] < data['ema_200'], 'ema_200_signal'] = -1
@@ -176,9 +176,9 @@ def create_technical_indicators2(ticker='BTCUSDT', interval='1d'):
     # NaN 값 제거
     data = data.dropna()
     
-    data.to_csv(f'/workspace/data/preprocess/{ticker}/{ticker}-{interval}-HEIKIN_ASHI_200EMA.csv')
+    data.to_csv(f'/workspace/data/preprocess/{ticker}/{ticker}-{interval}-HEIKIN_ASHI_200EMA_test.csv')
     return True
 
 if __name__ == '__main__':
-    #preprocess_historical(interval='30m')
-    create_technical_indicators2(interval='30m')
+    #preprocess_historical(interval='15m')
+    create_technical_indicators2(interval='15m')

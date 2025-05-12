@@ -233,38 +233,47 @@ class PPOGRU2:
         current_performance = success_rate
         self.performance_history.append(current_performance)
         
-        # 조기 종료 검사
+        # 총 수익 계산
+        total_profit = 0
+        for transition in self.memory:
+            _, _, reward, _, _, _, _ = transition
+            total_profit += reward
+        
+        # 조기 종료 검사 - 더 관대한 조건으로 수정
         if current_performance > self.best_performance:
             self.best_performance = current_performance
             self.patience_counter = 0
         else:
             self.patience_counter += 1
             
-        if self.patience_counter >= self.patience:
+        if self.patience_counter >= self.patience * 2:  # patience를 2배로 증가
             return 0
         
-        # 학습률 스케줄링
+        # 학습률 스케줄링 - 성공률에 따른 동적 조정
         for optimizer in self.optimizers:
             for param_group in optimizer.param_groups:
                 if 'lr' in param_group:
-                    param_group['lr'] = max(param_group['lr'] * self.lr_decay, self.min_lr)
+                    if current_performance > 0.6:  # 성공률이 60% 이상일 때
+                        param_group['lr'] = max(param_group['lr'] * 0.999, self.min_lr)  # 더 천천히 감소
+                    else:
+                        param_group['lr'] = max(param_group['lr'] * self.lr_decay, self.min_lr)
         
-        # 클리핑 범위 동적 조정
-        self.current_epsilon = max(self.current_epsilon * self.epsilon_decay, self.min_epsilon)
+        # 클리핑 범위 동적 조정 - 더 점진적인 변화
+        self.current_epsilon = max(self.current_epsilon * 0.999, self.min_epsilon)
         
-        # 커리큘럼 학습: 성공률에 따른 난이도 조정
+        # 커리큘럼 학습: 성공률에 따른 난이도 조정 - 더 점진적인 변화
         if success_rate > self.curriculum_threshold:
-            self.current_difficulty *= self.curriculum_factor  # 난이도 증가
+            self.current_difficulty = min(1.0, self.current_difficulty * 1.001)  # 더 천천히 증가
         else:
-            self.current_difficulty = min(1.0, self.current_difficulty / self.curriculum_factor)  # 난이도 감소
+            self.current_difficulty = max(0.5, self.current_difficulty * 0.999)  # 더 천천히 감소
         
-        # 거래 성공률에 따른 확신 임계값 조정
+        # 거래 성공률에 따른 확신 임계값 조정 - 더 점진적인 변화
         if self.trade_count > 0:
             trade_success_rate = self.successful_trades / self.trade_count
             if trade_success_rate > 0.7:  # 높은 성공률
-                self.confidence_threshold = max(0.75, self.confidence_threshold - 0.005)
+                self.confidence_threshold = max(0.75, self.confidence_threshold - 0.001)  # 더 천천히 감소
             elif trade_success_rate < 0.4:  # 낮은 성공률
-                self.confidence_threshold = min(0.9, self.confidence_threshold + 0.01)
+                self.confidence_threshold = min(0.9, self.confidence_threshold + 0.002)  # 더 천천히 증가
         
         # 난이도에 따른 리워드 스케일링
         reward_batch = []

@@ -43,7 +43,7 @@ class FuturesEnv3(gym.Env):
         self.max_steps = 1000
         self.action_space = spaces.Discrete(3, start=-1)
         #self.action_space = spaces.Box(low=-1.0, high=1.0, dtype=np.float32)
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(19,), dtype=np.float32)
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(11,), dtype=np.float32)
         self.position_history = []  # 포지션 기록 추가
         self.last_step = 0  # last_step 속성 추가
 
@@ -133,12 +133,6 @@ class FuturesEnv3(gym.Env):
         start_idx = max(0, self.current_step-35)
         window = self.data.iloc[start_idx:self.current_step+1]
         state = np.array([
-            self.data.iloc[self.current_step]['Open'],
-            self.data.iloc[self.current_step]['Close'],
-            self.data.iloc[self.current_step]['High'],
-            self.data.iloc[self.current_step]['Low'],
-            self.data.iloc[self.current_step]['Volume'],
-
             self.data.iloc[self.current_step]['ha_open'],
             self.data.iloc[self.current_step]['ha_close'],
             self.data.iloc[self.current_step]['ha_high'],
@@ -149,17 +143,8 @@ class FuturesEnv3(gym.Env):
             self.data.iloc[self.current_step]['ema_200'],
             self.data.iloc[self.current_step]['ema_200_signal'],
             self.data.iloc[self.current_step]['stoch_rsi'],
-            self.data.iloc[self.current_step]['stoch_signal'],
-            self.data.iloc[self.current_step]['bb_middle'],
-            self.data.iloc[self.current_step]['bb_std'],
-            self.data.iloc[self.current_step]['bb_upper'],
-            self.data.iloc[self.current_step]['bb_lower'],
-            self.data.iloc[self.current_step]['bb_width'],
-            self.data.iloc[self.current_step]['bb_width_change'],
-            self.data.iloc[self.current_step]['ha_signal'],
-            self.data.iloc[self.current_step]['bb_width_change']
+            self.data.iloc[self.current_step]['stoch_signal']
         ], dtype=np.float32)
-        #state = state.reshape(1, -1)
         return state
         
     def step(self, action):

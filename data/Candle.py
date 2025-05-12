@@ -117,53 +117,23 @@ class CandleStateGenerator:
         
         return states
     
-    def get_state_vector(self, current_time: pd.Timestamp) -> np.ndarray:
-        """
-        현재 시점의 상태 벡터 생성
+    def get_state_vector(self):
+        # 상태 벡터 생성
+        state_vector = np.array([
+            self.ha_open,
+            self.ha_close,
+            self.ha_high,
+            self.ha_low,
+            self.ha_body,
+            self.ha_lower_wick,
+            self.ha_upper_wick,
+            self.ma_200,
+            self.ma_200_signal,
+            self.stoch_rsi,
+            self.stoch_signal
+        ], dtype=np.float32)
         
-        Parameters:
-        -----------
-        current_time : pd.Timestamp
-            현재 시점
-            
-        Returns:
-        --------
-        np.ndarray
-            상태 벡터
-        """
-        states = self.generate_state(current_time)
-        
-        # 상태 벡터 구성
-        state_vector = []
-        
-        for state in states:
-            # 기본 특성
-            features = [
-                state.body_size,
-                state.upper_shadow,
-                state.lower_shadow,
-                float(state.is_bullish),
-                state.volume,
-                state.price_change
-            ]
-            
-            # 패턴 원-핫 인코딩
-            pattern_features = np.zeros(5)  # ['normal', 'doji', 'hammer', 'shooting_star', 'engulfing']
-            if state.pattern == 'doji':
-                pattern_features[1] = 1
-            elif state.pattern == 'hammer':
-                pattern_features[2] = 1
-            elif state.pattern == 'shooting_star':
-                pattern_features[3] = 1
-            elif 'engulfing' in state.pattern:
-                pattern_features[4] = 1
-            else:
-                pattern_features[0] = 1
-                
-            features.extend(pattern_features)
-            state_vector.extend(features)
-        
-        return np.array(state_vector)
+        return state_vector
 
     def save_state_to_csv(self, current_time: pd.Timestamp, output_dir: str = 'data/states'):
         """
@@ -204,7 +174,6 @@ class CandleStateGenerator:
         
         # CSV 파일로 저장
         df.to_csv(filepath, index=False)
-        print(f"상태 데이터가 {filepath}에 저장되었습니다.")
 
 # 사용 예시
 if __name__ == "__main__":
@@ -216,10 +185,7 @@ if __name__ == "__main__":
     
     # 현재 시점의 상태 벡터 생성
     current_time = data.index[-1]
-    state_vector = state_generator.get_state_vector(current_time)
+    state_vector = state_generator.get_state_vector()
     
     # 상태 데이터 CSV로 저장
     state_generator.save_state_to_csv(current_time)
-    
-    print(f"상태 벡터 크기: {state_vector.shape}")
-    print(f"상태 벡터: {state_vector}")

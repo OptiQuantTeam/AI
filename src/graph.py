@@ -313,14 +313,14 @@ def plot_episode_metrics(balance_history, profit_history, price_history, profit_
     
     return metrics
 
-def plot_learning_progress(step_num_history, profit_rate_history, episode_rewards, episode_results, path):
+def plot_learning_progress(episode_win_rate, profit_rate_history, episode_rewards, episode_results, path):
     """
     여러 에피소드에 걸친 학습 지표를 시각화하는 함수
     
     Args:
         balance_history (list): 모든 에피소드의 잔고 기록 리스트
-        cumulative_results (list): 모든 에피소드의 누적 결과 리스트
-        profit_rate_history (list): 모든 에피소드의 수익률 기록 리스트
+        cumulative_results (list): 모든 에피소드의 누적 결과 리스트 
+        profit_rate_history (list): 모든 에피소드의 수익률 기록 리스트 %
         episode_rewards (list): 모든 에피소드의 보상 리스트
         path (str): 그래프를 저장할 경로
     """
@@ -332,7 +332,7 @@ def plot_learning_progress(step_num_history, profit_rate_history, episode_reward
     # 승률 계산 (수익률이 양수일 때)
     for profit_rate in profit_rate_history:
     #for profit_rate in episode_results:
-        win_rates.append(1 if profit_rate > 0 else 0)
+        win_rates.append(1 if profit_rate > 1 else 0)
     
     
     # 그래프 생성
@@ -384,10 +384,18 @@ def plot_learning_progress(step_num_history, profit_rate_history, episode_reward
     ax2.grid(True)
     
     # 3. 누적 결과 그래프
+    '''
     axes[1, 0].plot(np.cumsum(episode_results))
     axes[1, 0].set_title(f'Cumulative Returns : {np.cumsum(episode_results)[-1]}')
     axes[1, 0].set_xlabel('Episode')
     axes[1, 0].set_ylabel('Cumulative Return')
+    axes[1, 0].grid(True)
+    '''
+
+    axes[1, 0].plot(episode_win_rate)
+    axes[1, 0].set_title(f'Episode win rate')
+    axes[1, 0].set_xlabel('Episode')
+    axes[1, 0].set_ylabel('Win Rate')
     axes[1, 0].grid(True)
     
     # 4. 보상 변화 그래프
