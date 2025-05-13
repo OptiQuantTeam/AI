@@ -244,7 +244,7 @@ class Loader():
                 'current_episode': current_episode,
                 'total_episodes': self.num_episodes,
                 'last_step': 0,
-                'checkpoint_term': self.checkpoint_term\
+                'checkpoint_term': self.checkpoint_term
             },
             # 학습 결과
             'training_results': {
@@ -520,10 +520,9 @@ class Loader():
                     }
                     time = (datetime.datetime.now() + datetime.timedelta(hours=9)).strftime("%Y%m%d_%H:%M:%S")
                     os.makedirs('checkpoints', exist_ok=True)
-                    os.makedirs(f'checkpoints/{self.agent.model_name}', exist_ok=True)
-                    os.makedirs(f'checkpoints/{self.agent.model_name}/learning_info', exist_ok=True)
-                    self.agent.save_model(f'checkpoints/{self.agent.model_name}/{self.agent.model_name}_{time}_ep_{episode + 1}.pth')
-                    self.agent.save_learning_state(learning_info, f'checkpoints/{self.agent.model_name}/learning_info/{self.agent.model_name}_{time}_ep_{episode + 1}.json')
+                    os.makedirs(f'checkpoints/learning_info', exist_ok=True)
+                    self.agent.save_model(f'checkpoints/{self.agent.model_name}_{time}_ep_{episode + 1}.pth')
+                    self.agent.save_learning_state(learning_info, f'checkpoints/learning_info/{self.agent.model_name}_{time}_ep_{episode + 1}.json')
                     
                     self.logger.render(f" <체크포인트 저장됨: {episode + 1}>")
             
@@ -716,13 +715,12 @@ class Loader():
                 
                 if is_normal_exit:
                     os.makedirs('models', exist_ok=True)
-                    os.makedirs(f'models/{self.agent.model_name}', exist_ok=True)
-                    os.makedirs(f'models/{self.agent.model_name}/learning_info', exist_ok=True)
+                    os.makedirs(f'models/learning_info', exist_ok=True)
                     os.makedirs(f'json/{self.agent.model_name}', exist_ok=True)
                     os.makedirs(f'results/{self.agent.model_name}', exist_ok=True)
                     
-                    self.agent.save_model(f'models/{self.agent.model_name}/{self.agent.model_name}_{time}.pth')
-                    self.agent.save_learning_state(learning_info, f'models/{self.agent.model_name}/learning_info/{self.agent.model_name}_{time}.json')
+                    self.agent.save_model(f'models/{self.agent.model_name}_{time}.pth')
+                    self.agent.save_learning_state(learning_info, f'models/learning_info/{self.agent.model_name}_{time}.json')
                     with open(f'json/{self.agent.model_name}/{self.agent.model_name}_metadata_{time}.json', 'w') as f:
                         json.dump(metadata, f, indent=4)
                     
@@ -737,15 +735,14 @@ class Loader():
 
                 else:
                     os.makedirs('checkpoints', exist_ok=True)
-                    os.makedirs(f'models/{self.agent.model_name}', exist_ok=True)
-                    os.makedirs(f'models/{self.agent.model_name}/learning_info', exist_ok=True)
+                    os.makedirs(f'models/learning_info', exist_ok=True)
                     os.makedirs('json', exist_ok=True)
                     
                     # 체크포인트 데이터에 중단 상태 표시
                     learning_info['session_info']['session_type'] = 'interrupted'
                     
-                    self.agent.save_model(f'checkpoints/{self.agent.model_name}/{self.agent.model_name}_{time}.pth')
-                    self.agent.save_learning_state(learning_info, f'checkpoints/{self.agent.model_name}/learning_info/{self.agent.model_name}_{time}.json')
+                    self.agent.save_model(f'checkpoints/{self.agent.model_name}_{time}.pth')
+                    self.agent.save_learning_state(learning_info, f'checkpoints/learning_info/{self.agent.model_name}_{time}.json')
                     with open(f'json/{self.agent.model_name}/{self.agent.model_name}_checkpoint_{time}.json', 'w') as f:
                         json.dump(metadata, f, indent=4)
 
@@ -1124,13 +1121,17 @@ class Loader():
                 total_trades = profit_count + loss_count
                 win_rate = profit_count / total_trades if total_trades > 0 else 0
                 episode_win_rate.append(win_rate)
-                
-                metrics = plot_learning_progress(
-                        episode_win_rate=episode_win_rate,
-                        profit_rate_history=profit_rate_history,
-                        episode_rewards=episode_rewards,
-                        episode_results=episode_results,
-                        path=f'results/{self.agent.model_name}/{self.agent.model_name}_result_{episode + 1}.png'
+
+                os.makedirs(f'results/{self.agent.model_name}', exist_ok=True)
+                os.makedirs(f'results/{self.agent.model_name}/test', exist_ok=True)
+                metrics = plot_episode_metrics(
+                        balance_history=self.test_env.balance_history,
+                        profit_history=self.test_env.profit_history,
+                        profit_rate_history=self.test_env.profit_rate_history,
+                        price_history=self.test_env.price_history,
+                        actions=actions,
+                        balance_profit_rate_history=self.test_env.balance_profit_rate_history,
+                        path=f'results/{self.agent.model_name}/test/{self.agent.model_name}_learning_{episode + 1}.png'
                     )
 
             result = {
@@ -1268,8 +1269,7 @@ class Loader():
                 }
                 
                 os.makedirs('models', exist_ok=True)
-                os.makedirs(f'models/{self.agent.model_name}', exist_ok=True)
-                os.makedirs(f'models/{self.agent.model_name}/learning_info', exist_ok=True)
+                os.makedirs(f'models/learning_info', exist_ok=True)
                 os.makedirs('json', exist_ok=True)
                 os.makedirs(f'json/{self.agent.model_name}', exist_ok=True)
                 os.makedirs(f'results/{self.agent.model_name}', exist_ok=True)
