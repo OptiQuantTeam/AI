@@ -75,7 +75,7 @@ class PPO3:
             # 두 샘플링 결과가 같은 경우
             if actor_action_idx == indicator_action_idx:
                 # 두 분포의 평균을 사용
-                alpha = 0.3
+                alpha = 0.7  # AI 결정 가중치를 0.7로 증가
                 pi = alpha * action_probs + (1 - alpha) * pi_I
                 action_dist = torch.distributions.Categorical(pi)
                 action_idx = action_dist.sample()
@@ -194,7 +194,7 @@ class PPO3:
                 # 현재 정책의 행동 분포
                 value, action_probs, action_logits = self.actor_critic(state)
                 pi_I = self.indicator_distribution(state)
-                alpha = 0.3
+                alpha = 0.7  # AI 결정 가중치를 0.7로 증가
                 pi = alpha * action_probs + (1 - alpha) * pi_I
                 
                 # Categorical 분포에서 액션 샘플링

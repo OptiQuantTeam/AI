@@ -229,9 +229,17 @@ class PPOGRU2:
         if len(self.memory) < batch_size:
             return 0
         
-        # 성능 모니터링
-        current_performance = success_rate
-        self.performance_history.append(current_performance)
+        # 현재 성능 계산
+        current_performance = success_rate if success_rate > 0 else 0.5
+        
+        # 학습률 스케줄링 - 성공률에 따른 동적 조정
+        for optimizer in self.optimizers:
+            for param_group in optimizer.param_groups:
+                if 'lr' in param_group:
+                    if current_performance > 0.6:  # 성공률이 60% 이상일 때
+                        param_group['lr'] = max(param_group['lr'] * 0.999, self.min_lr)  # 더 천천히 감소
+                    else:
+                        param_group['lr'] = max(param_group['lr'] * self.lr_decay, self.min_lr)
         
         # 총 수익 계산
         total_profit = 0
@@ -248,15 +256,6 @@ class PPOGRU2:
             
         if self.patience_counter >= self.patience * 2:  # patience를 2배로 증가
             return 0
-        
-        # 학습률 스케줄링 - 성공률에 따른 동적 조정
-        for optimizer in self.optimizers:
-            for param_group in optimizer.param_groups:
-                if 'lr' in param_group:
-                    if current_performance > 0.6:  # 성공률이 60% 이상일 때
-                        param_group['lr'] = max(param_group['lr'] * 0.999, self.min_lr)  # 더 천천히 감소
-                    else:
-                        param_group['lr'] = max(param_group['lr'] * self.lr_decay, self.min_lr)
         
         # 클리핑 범위 동적 조정 - 더 점진적인 변화
         self.current_epsilon = max(self.current_epsilon * 0.999, self.min_epsilon)

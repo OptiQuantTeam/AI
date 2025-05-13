@@ -212,21 +212,18 @@ class FuturesEnv11(gym.Env):
             state: 다음 상태
         '''
 
-        
-        if self.recurrence < 10 and self.recurrence > 0:
-            self.current_step = self.tmp_current
-            self.recurrence += 1
+        if self.test:
+            self.current_step = self.last_step + 1
+            if self.current_step >= len(self.data) - self.max_steps:
+                self.current_step = 0  # 데이터의 처음으로 돌아가도록 수정
         else:
-            self.current_step = np.random.randint(36, len(self.data) - self.max_steps)
-            self.recurrence = 0 if self.recurrence == 10 else self.recurrence + 1
+            if self.recurrence < 10 and self.recurrence > 0:
+                self.current_step = self.tmp_current
+                self.recurrence += 1
+            else:
+                self.current_step = np.random.randint(36, len(self.data) - self.max_steps)
+                self.recurrence = 0 if self.recurrence == 10 else self.recurrence + 1
         
-        '''
-
-        self.current_step = self.last_step + 1
-        if self.current_step >= len(self.data) - self.max_steps:
-            self.current_step = 100
-        '''
-
         self.last_step = self.current_step
         self.tmp_current = self.current_step
         self.balance = self.initial_balance
@@ -340,7 +337,7 @@ class FuturesEnv11(gym.Env):
             
         
         # 학습 시간 설정
-        if self.num > 7 * 24 * 2:
+        if self.num > 400:  # 15분봉 기준 5시간= 20 steps
             done = True
             
         # 수익 목표 달성 시 추가 보상
