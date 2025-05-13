@@ -51,15 +51,17 @@ def get_klines(symbol, interval, start_time=None, end_time=None, limit=None):
 #timestamp = 1732792920000
 if __name__ == '__main__':
     year = 2017
-
-    while year < 2024:
+    ticker = "BTCUSDT"
+    interval = "30m"
+    
+    while year < 2025:
         date_string = str(year)+'-01-01 00:00:00'
         timestamp = int(time.mktime(datetime.strptime(date_string, '%Y-%m-%d %H:%M:%S').timetuple())*1000)
         date_string2 = str(year)+'-12-31 23:59:59'
         timestamp2 = int(time.mktime(datetime.strptime(date_string2, '%Y-%m-%d %H:%M:%S').timetuple())*1000)
         #current = math.trunc(int((time.time()/100))*100000)
 
-        df =  get_klines("BTCUSDT", "30m", start_time=timestamp, end_time=timestamp2, limit=1000)
+        df =  get_klines(ticker, interval, start_time=timestamp, end_time=timestamp2, limit=1000)
         #print(df)
-        df.to_csv("./data/raw/BTCUSDT-30m-"+str(year)+".csv")
+        df.to_csv(f"./data/raw/{ticker}-{interval}-{year}.csv")
         year+=1

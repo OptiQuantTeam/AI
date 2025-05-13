@@ -154,6 +154,83 @@ def create_technical_indicators2(ticker='BTCUSDT', interval='1d'):
     data.to_csv(f'/workspace/data/preprocess/{ticker}/{ticker}-{interval}-technical4.csv')
     return True
 
+def create_technical_indicators3(ticker='BTCUSDT', interval='1d'):
+    data = pd.DataFrame()
+    year=2017
+    while year <= 2023:
+        path = f'/workspace/data/raw/{ticker}-{interval}-{year}.csv'
+        df = pd.read_csv(path, index_col=0)
+        data = pd.concat([data, df])
+        year += 1
+
+    """하이킨 아시 캔들 계산"""
+    # Heikin Ashi 캔들 계산
+    data['ha_close'] = (data['Open'] + data['High'] + data['Low'] + data['Close']) / 4
+    data['ha_open'] = (data['Open'].shift(1) + data['Close'].shift(1)) / 2
+    data['ha_high'] = data[['High', 'Open', 'Close']].max(axis=1)
+    data['ha_low'] = data[['Low', 'Open', 'Close']].min(axis=1)
+    
+    # 캔들 특성 계산
+    data['ha_body'] = abs(data['ha_close'] - data['ha_open'])
+    data['ha_lower_wick'] = np.minimum(data['ha_open'], data['ha_close']) - data['ha_low']
+    data['ha_upper_wick'] = data['ha_high'] - np.maximum(data['ha_open'], data['ha_close'])
+    
+    # 하이킨 아시 신호 생성 (1: 상승, 0: 중립, -1: 하락)
+    data['ha_signal'] = 0
+    data.loc[(data['ha_close'] > data['ha_open']) & 
+             (data['ha_lower_wick'] < 1e-6) & 
+             (data['ha_body'] > 0.5), 'ha_signal'] = 1
+    data.loc[(data['ha_close'] < data['ha_open']) & 
+             (data['ha_upper_wick'] < 1e-6) & 
+             (data['ha_body'] > 0.5), 'ha_signal'] = -1
+
+    """200 EMA 계산"""
+    data['ema_200'] = data['Close'].ewm(span=9600).mean()    # 30분봉 기준 200일 (200 * 48)
+    data['ema_200_signal'] = 0
+    data.loc[data['Close'] > data['ema_200'], 'ema_200_signal'] = 1
+    data.loc[data['Close'] < data['ema_200'], 'ema_200_signal'] = -1
+
+    """Stochastic RSI 계산"""
+    # RSI 계산
+    delta = data['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    data['RSI'] = 100 - (100 / (1 + rs))
+    
+    # Stochastic RSI 계산
+    data['stoch_rsi'] = (data['RSI'] - data['RSI'].rolling(14).min()) / \
+                        (data['RSI'].rolling(14).max() - data['RSI'].rolling(14).min())
+    
+    # Stochastic RSI 신호 생성 (1: 과매수, 0: 중립, -1: 과매도)
+    data['stoch_signal'] = 0
+    data.loc[data['stoch_rsi'] < 0.2, 'stoch_signal'] = -1  # 과매도
+    data.loc[data['stoch_rsi'] > 0.8, 'stoch_signal'] = 1   # 과매수
+
+    """볼린저 밴드 계산"""
+    data['bb_middle'] = data['Close'].rolling(window=20).mean()
+    data['bb_std'] = data['Close'].rolling(window=20).std()
+    data['bb_upper'] = data['bb_middle'] + 2 * data['bb_std']
+    data['bb_lower'] = data['bb_middle'] - 2 * data['bb_std']
+    data['bb_width'] = (data['bb_upper'] - data['bb_lower']) / data['bb_middle']
+    data['bb_width_change'] = data['bb_width'].diff()
+
+    # 필요한 컬럼만 선택
+    data = data[['Open', 'Close', 'High', 'Low', 'Volume',
+                'ha_close', 'ha_open', 'ha_high', 'ha_low',
+                'ha_body', 'ha_lower_wick', 'ha_upper_wick',
+                'ha_signal', 'ema_200', 'ema_200_signal',
+                'stoch_rsi', 'stoch_signal',
+                'bb_middle', 'bb_std', 'bb_upper', 'bb_lower',
+                'bb_width', 'bb_width_change']]
+    
+    # NaN 값 제거
+    data = data.dropna()
+    
+    data.to_csv(f'/workspace/data/preprocess/{ticker}/{ticker}-{interval}-HEIKIN_ASHI_200EMA.csv')
+    return True
+
+
 if __name__ == '__main__':
     #preprocess_historical(interval='30m')
-    create_technical_indicators2(interval='30m')
+    create_technical_indicators3(interval='30m')

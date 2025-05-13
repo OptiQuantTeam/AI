@@ -3,7 +3,7 @@ from indicator import RSI, EMA
 import requests
 from datetime import datetime
 
-def getTrainData(ticker='BTCUSDT', startYear=2017, endYear=2023, interval='3m', raw=True):
+def getTrainData(ticker='BTCUSDT', startYear=2017, endYear=2023, interval='30m', raw=True):
     
     if raw:
         data = pd.DataFrame()
@@ -48,7 +48,8 @@ def getCurrentData(symbol, interval='1m', limit=None):
     df['Close'] = df['Close'].astype('float')
 
     df['RSI'] = RSI(df)
-    df['EMAF'] = EMA(df, window=10)
+    ema_result = EMA(df, window=10)
+    df['EMAF'] = ema_result['EMA']
 
     df['Open time'] = df['Open time'].astype('int')
     df['Open time'] = df['Open time'].apply(lambda x : datetime.fromtimestamp(x/1000))
