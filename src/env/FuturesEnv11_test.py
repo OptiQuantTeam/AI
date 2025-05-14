@@ -321,24 +321,17 @@ class FuturesEnv11_test(gym.Env):
         
         # 보상 초기화
         immediate_reward = 0
-        position_reward = 0
         action_reward = 0
-        
-        # 1. 행동에 대한 즉각적인 보상
-        if action == LONG:
-            action_reward -= 0.1  # LONG 진입 시도에 대한 작은 보상
-        elif action == SHORT:
-            action_reward -= 0.1  # SHORT 진입 시도에 대한 작은 보상
-        else:
-            action_reward += 0.1  # HOLD에 대한 작은 보상
-            
-        
+        position_reward = 0
+
+       
             
         # 수익 목표 달성 시 추가 보상
         if self.balance > self.initial_balance * (1 + self.profit_target):
             immediate_reward += 0.5
             self.clear = True
-            
+        
+        
         # 행동에 따른 포지션 방향 결정
         if action == LONG:
             if self.position == LONG:
@@ -357,16 +350,21 @@ class FuturesEnv11_test(gym.Env):
         else:
             position_direction = self.position
 
+         # 1. 행동에 대한 즉각적인 보상
+        if position_direction == LONG:
+            action_reward -= 0.1  # LONG 진입 시도에 대한 작은 보상
+        elif position_direction == SHORT:
+            action_reward -= 0.1  # SHORT 진입 시도에 대한 작은 보상
+        else:
+            action_reward += 0.1  # HOLD에 대한 작은 보상
+
         # 포지션 변경 시
         if self.position != position_direction:
             # 기존 포지션 청산
             if self.position != FLAT:
                 profit = self.position * (current_price - self.entry_price)
-                self.balance += profit * self.size
-                
                 exit_cost = current_price * self.trade_fee
-                self.balance -= exit_cost * self.size
-                
+                self.balance += (profit - exit_cost) * self.size
                 self.size = 1e-6
                 self.position = FLAT
 
@@ -374,7 +372,7 @@ class FuturesEnv11_test(gym.Env):
                 
                 self._adjust_leverage(profit_rate)
                 
-                # 청산 시 보상 계산 (과거 행동에 대한 보상)
+                # 포지션 정리 보상 계리 (과거 행동에 대한 보상)
                 exit_reward = (profit - exit_cost) / self.entry_price * 10
                 
                 if profit_rate > 0.01:
@@ -388,7 +386,7 @@ class FuturesEnv11_test(gym.Env):
                 
                 self.total_trade += 1
                 
-            self.balance_profit_rate = (self.balance - self.initial_balance) / self.initial_balance 
+            
             
             # 새로운 포지션 진입
             if position_direction != FLAT and not done:
@@ -402,40 +400,27 @@ class FuturesEnv11_test(gym.Env):
                 self.size = position_size
                 self.entry_price = current_price
 
+            self.balance_profit_rate = (self.balance - self.initial_balance) / self.initial_balance 
 
-        # 포지션 유지 중일 때 손절매 로직
+        # 포지션 유지 중일 때 손절매 로직 체크
         elif self.position != FLAT:
+            # 미실현 손익에 대한 보상
+            unrealized_profit = self.position * (current_price - self.entry_price) / self.entry_price
+            position_reward = unrealized_profit * 100
             # 손절매 로직
-            if self.position == LONG and (current_price - self.entry_price) / self.entry_price < -self.stop_loss_threshold:
+            if unrealized_profit < -self.stop_loss_threshold:
                 profit = self.position * (current_price - self.entry_price)
                 self.balance += profit * self.size
                 exit_cost = current_price * self.trade_fee
                 self.balance -= exit_cost * self.size
                 self.size = 1e-6
                 self.position = FLAT
-                position_direction = FLAT
+                #position_direction = FLAT
                 profit_rate = profit / self.entry_price
-                exit_reward = (profit - exit_cost) / (self.entry_price) * 10
-                action_reward += -5  # 손절매 실행에 대한 보상 (리스크 관리)
-            elif self.position == SHORT and (self.entry_price - current_price) / self.entry_price < -self.stop_loss_threshold:
-                profit = self.position * (current_price - self.entry_price)
-                self.balance += profit * self.size
-                exit_cost = current_price * self.trade_fee
-                self.balance -= exit_cost * self.size
-                self.size = 1e-6
-                self.position = FLAT
-                position_direction = FLAT
-                profit_rate = profit / self.entry_price
-                exit_reward = (profit - exit_cost) / (self.entry_price) * 10
+                exit_reward = (profit - exit_cost) / self.entry_price * 100
                 action_reward += -5  # 손절매 실행에 대한 보상 (리스크 관리)
         
-        # 2. 현재 포지션에 대한 즉각적인 보상
-        if self.position != FLAT:
-            unrealized_profit = self.position * (current_price - self.entry_price) / self.entry_price
-            position_reward = unrealized_profit  # 미실현 손익에 대한 보상
-        else:
-            position_reward = 0
-
+        # 자산 30% 이하로 떨어지면 종료
         if self.balance < self.initial_balance * 0.3:
             done = True
 
@@ -461,7 +446,6 @@ class FuturesEnv11_test(gym.Env):
             # 학습 종료 시 다음 학습 step 여부 결정
             if final_profit_rate > 0.01:
                 self.success_episodes += 1
-
         else:
             self.current_step += 1
 
@@ -486,6 +470,10 @@ class FuturesEnv11_test(gym.Env):
         self.logger.render_step_state(f'    - position_direction: {position_direction}')
         self.logger.render_step_state(f'    - size: {self.size}')
         self.logger.render_step_state(f'    - entry_price: {self.entry_price}')
+        self.logger.render_step_state(f'    - unrealized_profit: {unrealized_profit if "unrealized_profit" in locals() else 0}')
+        self.logger.render_step_state(f'    - exit_reward: {exit_reward if "exit_reward" in locals() else 0}')
+        self.logger.render_step_state(f'    - position_reward: {position_reward}')
+        self.logger.render_step_state(f'    - action_reward: {action_reward}')
         self.logger.render_step_state(f'    - reward: {total_reward}')
         self.logger.render_step_state(f'    - success: {self.success}')
         self.logger.render_step_state(f'    - failure: {self.failure}')

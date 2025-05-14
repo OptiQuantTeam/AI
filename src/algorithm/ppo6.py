@@ -10,7 +10,7 @@ import json
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 
-class PPO3:
+class PPO6:
     def __init__(
         self, 
         state_dim, 
@@ -26,15 +26,22 @@ class PPO3:
         kl_coef=0.5,     # KL 발산 계수
         device="cuda" if torch.cuda.is_available() else "cpu"
     ):
-        self.actor_critic = AC.ActorCritic2(state_dim, action_dim).to(device)
+        self.actor_critic_long = AC.ActorCritic2(state_dim, 2).to(device)
+        self.actor_critic_short = AC.ActorCritic2(state_dim, 2).to(device)
         self.indicator_distribution = ID.IndicatorDistribution3(state_dim, action_dim).to(device)
         
         # 액터 옵티마이저
-        self.optimizer = optim.Adam([
-            {'params': self.actor_critic.feature_extraction.parameters()},
-            {'params': self.actor_critic.actor_direction.parameters()},
-            {'params': self.actor_critic.actor_direction_std},
-            {'params': self.actor_critic.critic.parameters(), 'lr': lr_critic}
+        self.optimizer_long = optim.Adam([
+            {'params': self.actor_critic_long.feature_extraction.parameters()},
+            {'params': self.actor_critic_long.actor_direction.parameters()},
+            {'params': self.actor_critic_long.actor_direction_std},
+            {'params': self.actor_critic_long.critic.parameters(), 'lr': lr_critic}
+        ], lr=lr_actor)
+        self.optimizer_short = optim.Adam([
+            {'params': self.actor_critic_short.feature_extraction.parameters()},
+            {'params': self.actor_critic_short.actor_direction.parameters()},
+            {'params': self.actor_critic_short.actor_direction_std},
+            {'params': self.actor_critic_short.critic.parameters(), 'lr': lr_critic}
         ], lr=lr_actor)
 
         self.state_dim = state_dim
@@ -56,24 +63,61 @@ class PPO3:
     def select_action(self, state):
         state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
         state = state[:, 5:]  # 5번 인덱스부터 마지막까지의 데이터만 사용
-        state2 = state[:, [7,9,10,11,17]]
-        self.actor_critic.eval()
+        state2 = state[:, [7,9,11,17]]
+        self.actor_critic_long.eval()
+        self.actor_critic_short.eval()
         with torch.no_grad():
-            value, action_probs, action_logits = self.actor_critic(state2)
+            value_long, action_probs_long, action_logits_long = self.actor_critic_long(state2)
+            value_short, action_probs_short, action_logits_short = self.actor_critic_short(state2)
             pi_I = self.indicator_distribution(state)
+            
+            # Actor network에서 샘플링
+            long_dist = torch.distributions.Categorical(action_probs_long)
+            long_action_idx = long_dist.sample()
+            long_action = long_action_idx.float()
+            long_log_prob = long_dist.log_prob(long_action_idx)
+            
+            short_dist = torch.distributions.Categorical(action_probs_short)
+            short_action_idx = short_dist.sample()
+            short_action = short_action_idx.float()
+            short_log_prob = short_dist.log_prob(short_action_idx)
+            
+            # 각 인덱스별로 행동 결정
+            new_action = torch.zeros_like(long_action_idx, dtype=torch.float)
+            new_log_prob = torch.zeros_like(long_log_prob)
+            value = torch.zeros_like(value_long)
 
-            # 두 분포의 평균을 사용
-            pi = self.alpha * action_probs + (1 - self.alpha) * pi_I
-            action_dist = torch.distributions.Categorical(pi)
-            action_idx = action_dist.sample()
-            action = action_idx.float() - 1.0
-            log_prob = action_dist.log_prob(action_idx)
+            # long_action_idx와 short_action_idx가 모두 0인 경우
+            mask_hold = (long_action_idx == 0) & (short_action_idx == 0)
+            new_action[mask_hold] = 0.0
+            new_log_prob[mask_hold] = (long_log_prob[mask_hold] + short_log_prob[mask_hold]) / 2
+            value[mask_hold] = (value_long[mask_hold] + value_short[mask_hold]) / 2
 
+            # long_action_idx가 1이고 short_action_idx가 0인 경우
+            mask_long = (long_action_idx == 1) & (short_action_idx == 0)
+            new_action[mask_long] = 1.0
+            new_log_prob[mask_long] = long_log_prob[mask_long]
+            value[mask_long] = value_long[mask_long]
+
+            # long_action_idx가 0이고 short_action_idx가 1인 경우
+            mask_short = (long_action_idx == 0) & (short_action_idx == 1)
+            new_action[mask_short] = -1.0
+            new_log_prob[mask_short] = short_log_prob[mask_short]
+            value[mask_short] = value_short[mask_short]
+
+            # long_action_idx와 short_action_idx가 모두 1인 경우
+            mask_indicator = (long_action_idx == 1) & (short_action_idx == 1)
+            if mask_indicator.any():
+                indicator_dist = torch.distributions.Categorical(pi_I[mask_indicator])
+                indicator_action_idx = indicator_dist.sample()
+                new_action[mask_indicator] = indicator_action_idx.float() - 1.0
+                new_log_prob[mask_indicator] = indicator_dist.log_prob(indicator_action_idx)
+                value[mask_indicator] = (value_long[mask_indicator] + value_short[mask_indicator]) / 2
             
         return (
-            action.cpu().numpy()[0],
+            new_action.cpu().numpy()[0],
             value.cpu().numpy()[0],
-            log_prob.cpu().numpy()[0]
+            new_log_prob.cpu().numpy()[0]
         )
         
     def store_transition(self, transition):
@@ -116,11 +160,14 @@ class PPO3:
         returns = []
         gae = 0
         
-        self.actor_critic.train()
+        self.actor_critic_long.train()
+        self.actor_critic_short.train()
         with torch.no_grad():
             next_state_batch = next_state_batch[:, 5:]
-            next_state_batch2 = next_state_batch[:, [7,9,10,11,17]]
-            next_value = self.actor_critic(next_state_batch2)[0]  # value는 첫 번째 반환값
+            next_state_batch2 = next_state_batch[:, [7,9,11,17]]
+            next_value_long = self.actor_critic_long(next_state_batch2)[0]  # value는 첫 번째 반환값
+            next_value_short = self.actor_critic_short(next_state_batch2)[0]
+            next_value = next_value_long + next_value_short
             next_value = next_value.squeeze()
             
             for r, v, done, next_v in zip(
@@ -165,23 +212,61 @@ class PPO3:
                 # 현재 미니배치
                 state = state_batch[idx]
                 state = state[:, 5:]
-                state2 = state[:, [7,9,10,11,17]]
+                state2 = state[:, [7,9,11,17]]
                 action = action_batch[idx]
                 advantage = advantages[idx]
                 return_ = returns[idx]
                 old_log_prob = old_log_prob_batch[idx]
                 
-                # 현재 정책의 행동 분포
-                value, action_probs, action_logits = self.actor_critic(state2)
+                
+                value_long, action_probs_long, action_logits_long = self.actor_critic_long(state2)
+                value_short, action_probs_short, action_logits_short = self.actor_critic_short(state2)
                 pi_I = self.indicator_distribution(state)
-                pi = self.alpha * action_probs + (1 - self.alpha) * pi_I
                 
-                # Categorical 분포에서 액션 샘플링
-                action_dist = torch.distributions.Categorical(pi)
-                action_idx = action_dist.sample()
-                new_action = action_idx.float() - 1.0
-                new_log_prob = action_dist.log_prob(action_idx)
+                # Actor network에서 샘플링
+                long_dist = torch.distributions.Categorical(action_probs_long)
+                long_action_idx = long_dist.sample()
+                long_action = long_action_idx.float()
+                long_log_prob = long_dist.log_prob(long_action_idx)
                 
+                short_dist = torch.distributions.Categorical(action_probs_short)
+                short_action_idx = short_dist.sample()
+                short_action = short_action_idx.float()
+                short_log_prob = short_dist.log_prob(short_action_idx)
+                #print(long_action_idx, short_action_idx)
+                
+                # 각 인덱스별로 행동 결정
+                new_action = torch.zeros_like(long_action_idx, dtype=torch.float)
+                new_log_prob = torch.zeros_like(long_log_prob)
+                value = torch.zeros_like(value_long)
+
+                # long_action_idx와 short_action_idx가 모두 0인 경우
+                mask_hold = (long_action_idx == 0) & (short_action_idx == 0)
+                new_action[mask_hold] = 0.0
+                new_log_prob[mask_hold] = (long_log_prob[mask_hold] + short_log_prob[mask_hold]) / 2
+                value[mask_hold] = (value_long[mask_hold] + value_short[mask_hold]) / 2
+
+                # long_action_idx가 1이고 short_action_idx가 0인 경우
+                mask_long = (long_action_idx == 1) & (short_action_idx == 0)
+                new_action[mask_long] = 1.0
+                new_log_prob[mask_long] = long_log_prob[mask_long]
+                value[mask_long] = value_long[mask_long]
+
+                # long_action_idx가 0이고 short_action_idx가 1인 경우
+                mask_short = (long_action_idx == 0) & (short_action_idx == 1)
+                new_action[mask_short] = -1.0
+                new_log_prob[mask_short] = short_log_prob[mask_short]
+                value[mask_short] = value_short[mask_short]
+
+                # long_action_idx와 short_action_idx가 모두 1인 경우
+                mask_indicator = (long_action_idx == 1) & (short_action_idx == 1)
+                if mask_indicator.any():
+                    indicator_dist = torch.distributions.Categorical(pi_I[mask_indicator])
+                    indicator_action_idx = indicator_dist.sample()
+                    new_action[mask_indicator] = indicator_action_idx.float() - 1.0
+                    new_log_prob[mask_indicator] = indicator_dist.log_prob(indicator_action_idx)
+                    value[mask_indicator] = (value_long[mask_indicator] + value_short[mask_indicator]) / 2
+
                 # KL 발산 계산
                 kl_divergence = (new_log_prob - old_log_prob).mean()
                 
@@ -204,10 +289,8 @@ class PPO3:
                 critic_loss = nn.SmoothL1Loss()(value, return_)
                 
                 # 3. 엔트로피 손실 (탐색을 위한)
-                entropy_loss = -0.01 * action_dist.entropy().mean()
-
-                # 액터 업데이트                
-                #_, action_probs, action_logits = self.actor_critic(state2)
+                #entropy_loss = -0.01 * action_dist.entropy().mean()
+                entropy_loss = 0
 
                 actor_total_loss = actor_loss + kl_penalty + entropy_loss
                 
@@ -215,15 +298,21 @@ class PPO3:
                 # 전체 손실 함수 (모니터링용)
                 total_loss = actor_total_loss + 0.5 * critic_loss
                 
-                self.optimizer.zero_grad()
-                total_loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.actor_critic.parameters(), 0.5)
-                self.optimizer.step()
+                self.optimizer_long.zero_grad()
+                self.optimizer_short.zero_grad()
+                
+                total_loss.backward(retain_graph=True)
+                
+                torch.nn.utils.clip_grad_norm_(self.actor_critic_long.parameters(), 0.5)
+                torch.nn.utils.clip_grad_norm_(self.actor_critic_short.parameters(), 0.5)
+                
+                self.optimizer_long.step()
+                self.optimizer_short.step()
                 
                 final_advantage = advantage.mean().item()
                 final_actor_loss = actor_loss.item()
                 final_critic_loss = critic_loss.item()
-                final_entropy_loss = entropy_loss.item()
+                final_entropy_loss = entropy_loss
                 final_total_loss = total_loss.item()
                 final_kl_divergence = kl_divergence.item()
                 
@@ -249,17 +338,20 @@ class PPO3:
             'action_dim': self.action_dim,
             
             # 모델 가중치 및 옵티마이저 상태
-            'actor_critic_state_dict': self.actor_critic.state_dict(),
+            'actor_critic_long_state_dict': self.actor_critic_long.state_dict(),
+            'actor_critic_short_state_dict': self.actor_critic_short.state_dict(),
             'indicator_distribution_state_dict': self.indicator_distribution.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict(),
+            'optimizer_long_state_dict': self.optimizer_long.state_dict(),
+            'optimizer_short_state_dict': self.optimizer_short.state_dict(),
             
             # 학습 파라미터
             'learning_params': {
                 'gamma': self.gamma,
                 'epsilon': self.epsilon,
                 'epochs': self.epochs,
-                'lr_actor': self.optimizer.param_groups[0]['lr'],
-                'lr_critic': self.optimizer.param_groups[-1]['lr'],
+                'lr_actor': self.optimizer_long.param_groups[0]['lr'],
+                'lr_critic': self.optimizer_long.param_groups[-1]['lr'],
+                
                 'batch_size': self.batch_size,
                 'device': str(self.device)
             }

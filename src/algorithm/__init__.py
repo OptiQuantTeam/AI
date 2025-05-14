@@ -8,3 +8,4 @@ from .ppo3 import PPO3
 from .ppo4 import PPO4
 from .ppo5 import PPO5
 from .sequencePPO import SequencePPO
+from .ppo6 import PPO6

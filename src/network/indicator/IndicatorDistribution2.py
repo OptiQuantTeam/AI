@@ -45,7 +45,7 @@ class IndicatorDistribution2(nn.Module):
         ha_body = state[:, 4]     # ha_body
         ha_lower_wick = state[:, 5]  # ha_lower_wick
         ha_upper_wick = state[:, 6]  # ha_upper_wick
-        
+        ha_signal = state[:, 7]     # ha_signal
         # 캔들 패턴 분석
         is_bullish = ha_close > ha_open  # 양봉
         is_bearish = ha_close < ha_open  # 음봉
@@ -70,12 +70,12 @@ class IndicatorDistribution2(nn.Module):
         ha_signal_tensor[strong_bearish, 0] = 0.7  # SHORT
         
         # 3) 200 MA 분석
-        ma_200 = state[:, 7]        # ma_200
-        ma_200_signal = state[:, 8]  # ma_200_signal
+        ma_200 = state[:, 8]        # ma_200
+        ma_200_signal = state[:, 9]  # ma_200_signal
         
         # 4) Stochastic RSI 분석
-        stoch_rsi = state[:, 9]      # stoch_rsi
-        stoch_signal = state[:, 10]   # stoch_signal
+        stoch_rsi = state[:, 10]      # stoch_rsi
+        stoch_signal = state[:, 11]   # stoch_signal
         
         stoch_signal_tensor = torch.zeros((batch_size, self.action_dim), device=state.device)
         
@@ -144,7 +144,11 @@ class IndicatorDistribution2(nn.Module):
         
         # 7) 최종 확률 분포 계산
         mixed_logits = default_logits + combined_signal
-        final_probs = F.softmax(mixed_logits, dim=-1)
+
+        gumbel_noise = -torch.log(-torch.log(torch.rand_like(mixed_logits)))
+        final_probs = F.softmax((mixed_logits + gumbel_noise) / 0.5, dim=-1)
+
+        #final_probs = F.softmax(mixed_logits, dim=-1)
         
         return final_probs
         

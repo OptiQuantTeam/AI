@@ -156,8 +156,8 @@ def create_technical_indicators2(ticker='BTCUSDT', interval='1d'):
 
 def create_technical_indicators3(ticker='BTCUSDT', interval='1d'):
     data = pd.DataFrame()
-    year=2024
-    while year <= 2024:
+    year=2022
+    while year <= 2022:
         path = f'/workspace/data/raw/{ticker}/{ticker}-{interval}-{year}.csv'
         df = pd.read_csv(path, index_col=0)
         data = pd.concat([data, df])
@@ -227,7 +227,7 @@ def create_technical_indicators3(ticker='BTCUSDT', interval='1d'):
     # NaN 값 제거
     data = data.dropna()
     
-    data.to_csv(f'/workspace/data/preprocess/{ticker}/{ticker}-{interval}-HEIKIN_ASHI_200EMA_test.csv')
+    data.to_csv(f'/workspace/data/preprocess/{ticker}/{ticker}-{interval}-HEIKIN_ASHI_200EMA_test3.csv')
     return True
 
 

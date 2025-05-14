@@ -27,16 +27,20 @@ class PPO3:
         device="cuda" if torch.cuda.is_available() else "cpu"
     ):
         self.actor_critic = AC.ActorCritic2(state_dim, action_dim).to(device)
-        self.indicator_distribution = ID.IndicatorDistribution3(state_dim, action_dim).to(device)
+        self.indicator_distribution = ID.IndicatorDistribution2(state_dim, action_dim).to(device)
         
         # 액터 옵티마이저
-        self.optimizer = optim.Adam([
+        self.optimizer = optim.SGD([
             {'params': self.actor_critic.feature_extraction.parameters()},
             {'params': self.actor_critic.actor_direction.parameters()},
-            {'params': self.actor_critic.actor_direction_std},
-            {'params': self.actor_critic.critic.parameters(), 'lr': lr_critic}
-        ], lr=lr_actor)
-
+            {'params': self.actor_critic.actor_direction_std}
+        ], lr=lr_actor, momentum=0.9, dampening=0, weight_decay=0, nesterov=True)
+        
+        # 크리틱 옵티마이저
+        self.critic_optimizer = optim.SGD([
+            {'params': self.actor_critic.critic.parameters()}
+        ], lr=lr_critic, momentum=0.9, dampening=0, weight_decay=0, nesterov=True)
+        
         self.state_dim = state_dim
         self.action_dim = action_dim
 
@@ -48,7 +52,7 @@ class PPO3:
         self.batch_size = batch_size
         self.memory = deque()
         self.performances = deque()
-        self.alpha = 0.7
+        
         # KL 발산 관련 파라미터
         self.kl_target = kl_target
         self.kl_coef = kl_coef
@@ -56,20 +60,41 @@ class PPO3:
     def select_action(self, state):
         state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
         state = state[:, 5:]  # 5번 인덱스부터 마지막까지의 데이터만 사용
-        state2 = state[:, [7,9,10,11,17]]
-        self.actor_critic.eval()
+        state2 = state[:, [7,9,11,17]]
         with torch.no_grad():
             value, action_probs, action_logits = self.actor_critic(state2)
             pi_I = self.indicator_distribution(state)
-
-            # 두 분포의 평균을 사용
-            pi = self.alpha * action_probs + (1 - self.alpha) * pi_I
-            action_dist = torch.distributions.Categorical(pi)
-            action_idx = action_dist.sample()
-            action = action_idx.float() - 1.0
-            log_prob = action_dist.log_prob(action_idx)
-
             
+            # Actor network에서 샘플링
+            actor_dist = torch.distributions.Categorical(action_probs)
+            actor_action_idx = actor_dist.sample()
+            actor_action = actor_action_idx.float() - 1.0
+            actor_log_prob = actor_dist.log_prob(actor_action_idx)
+            
+            # Indicator distribution에서 샘플링
+            indicator_dist = torch.distributions.Categorical(pi_I)
+            indicator_action_idx = indicator_dist.sample()
+            indicator_action = indicator_action_idx.float() - 1.0
+            indicator_log_prob = indicator_dist.log_prob(indicator_action_idx)
+            
+            # 두 샘플링 결과가 같은 경우
+            if actor_action_idx != indicator_action_idx:
+                # 두 분포의 평균을 사용
+                alpha = 0.3
+                pi = alpha * action_probs + (1 - alpha) * pi_I
+                action_dist = torch.distributions.Categorical(pi)
+                action_idx = action_dist.sample()
+                action = action_idx.float() - 1.0
+                log_prob = action_dist.log_prob(action_idx)
+            else:
+                # Actor network의 선택을 우선시
+                action = actor_action
+                action_idx = actor_action_idx
+                log_prob = actor_log_prob
+                #action = indicator_action
+                #action_idx = indicator_action_idx
+                #log_prob = indicator_log_prob
+        
         return (
             action.cpu().numpy()[0],
             value.cpu().numpy()[0],
@@ -116,10 +141,9 @@ class PPO3:
         returns = []
         gae = 0
         
-        self.actor_critic.train()
         with torch.no_grad():
             next_state_batch = next_state_batch[:, 5:]
-            next_state_batch2 = next_state_batch[:, [7,9,10,11,17]]
+            next_state_batch2 = next_state_batch[:, [7,9,11,17]]
             next_value = self.actor_critic(next_state_batch2)[0]  # value는 첫 번째 반환값
             next_value = next_value.squeeze()
             
@@ -165,7 +189,7 @@ class PPO3:
                 # 현재 미니배치
                 state = state_batch[idx]
                 state = state[:, 5:]
-                state2 = state[:, [7,9,10,11,17]]
+                state2 = state[:, [7,9,11,17]]
                 action = action_batch[idx]
                 advantage = advantages[idx]
                 return_ = returns[idx]
@@ -174,7 +198,8 @@ class PPO3:
                 # 현재 정책의 행동 분포
                 value, action_probs, action_logits = self.actor_critic(state2)
                 pi_I = self.indicator_distribution(state)
-                pi = self.alpha * action_probs + (1 - self.alpha) * pi_I
+                alpha = 0.3
+                pi = alpha * action_probs + (1 - alpha) * pi_I
                 
                 # Categorical 분포에서 액션 샘플링
                 action_dist = torch.distributions.Categorical(pi)
@@ -206,19 +231,29 @@ class PPO3:
                 # 3. 엔트로피 손실 (탐색을 위한)
                 entropy_loss = -0.01 * action_dist.entropy().mean()
 
-                # 액터 업데이트                
-                #_, action_probs, action_logits = self.actor_critic(state2)
-
-                actor_total_loss = actor_loss + kl_penalty + entropy_loss
+                # 액터와 크리틱을 분리
+                with torch.no_grad():
+                    # 크리틱 업데이트를 위한 값 계산
+                    critic_value = self.actor_critic.critic(self.actor_critic.feature_extraction(state2)).squeeze(-1)
                 
+                # 액터 업데이트
+                self.optimizer.zero_grad()
+                _, action_probs, action_logits = self.actor_critic(state2)
+                actor_total_loss = actor_loss + kl_penalty + entropy_loss
+                actor_total_loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.actor_critic.actor_direction.parameters(), 0.5)
+                self.optimizer.step()
+                
+                # 크리틱 업데이트
+                self.critic_optimizer.zero_grad()
+                value = self.actor_critic.critic(self.actor_critic.feature_extraction(state2)).squeeze(-1)
+                critic_loss = nn.SmoothL1Loss()(value, return_)
+                critic_loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.actor_critic.critic.parameters(), 0.5)
+                self.critic_optimizer.step()
                 
                 # 전체 손실 함수 (모니터링용)
                 total_loss = actor_total_loss + 0.5 * critic_loss
-                
-                self.optimizer.zero_grad()
-                total_loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.actor_critic.parameters(), 0.5)
-                self.optimizer.step()
                 
                 final_advantage = advantage.mean().item()
                 final_actor_loss = actor_loss.item()
