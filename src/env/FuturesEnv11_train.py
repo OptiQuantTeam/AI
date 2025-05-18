@@ -48,7 +48,7 @@ class FuturesEnv11_train(gym.Env):
         self.initial_leverage = 2  # 초기 레버리지
         self.leverage = self.initial_leverage  # 현재 레버리지
         self.min_leverage = 1.0  # 최소 레버리지
-        self.max_leverage = 2.0  # 최대 레버리지
+        self.max_leverage = 8.0  # 최대 레버리지
         self.leverage_step = 1  # 레버리지 조정 단위
         self.trade_fee = 0.0002
         self.max_steps = 2100
@@ -89,7 +89,7 @@ class FuturesEnv11_train(gym.Env):
         self.observation_space = spaces.Box(
             low=-np.inf, 
             high=np.inf, 
-            shape=(5,),  # 상태 공간 확장
+            shape=(6,),  # 상태 공간 확장
             dtype=np.float32
         )
         self.action_space = spaces.Discrete(3, start=-1)
@@ -167,7 +167,7 @@ class FuturesEnv11_train(gym.Env):
         Args:
             profit_rate: 현재 거래의 수익률
         '''
-        if profit_rate < 0.01:  # 손실인 경우
+        if profit_rate < 0.001:  # 손실인 경우
             self.consecutive_losses += 1
             self.consecutive_wins = 0
             
@@ -175,6 +175,7 @@ class FuturesEnv11_train(gym.Env):
             if self.consecutive_losses >= 2:
                 self.leverage = max(self.min_leverage, self.leverage - self.leverage_step)
                 self._adjust_loss_limit()  # 레버리지 변경 시 손실 한도 재조정
+                self._adjust_profit_limit()  # 레버리지 변경 시 수익 한도 재조정
                 #self.logger.render(f"연속 손실로 레버리지 감소: {self.leverage:.2f}")
         else:  # 수익인 경우
             self.consecutive_wins += 1
@@ -184,6 +185,7 @@ class FuturesEnv11_train(gym.Env):
             if self.consecutive_wins >= 2:
                 self.leverage = min(self.max_leverage, self.leverage + self.leverage_step)
                 self._adjust_loss_limit()  # 레버리지 변경 시 손실 한도 재조정
+                self._adjust_profit_limit()  # 레버리지 변경 시 수익 한도 재조정
                 #self.logger.render(f"연속 수익으로 레버리지 증가: {self.leverage:.2f}")
 
     def _get_position_ratio(self):
@@ -453,7 +455,7 @@ class FuturesEnv11_train(gym.Env):
                 exit_reward = (profit - exit_cost) / self.entry_price * 100
                 action_reward += 5  # 익절매 실행에 대한 보상 (리스크 관리)
                 self.success += 1
-                
+
         # 최종 보상 계산 (즉각적인 보상 + 청산 보상)
         total_reward = action_reward + (exit_reward if 'exit_reward' in locals() else position_reward)
         
