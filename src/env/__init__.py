@@ -9,3 +9,6 @@ from .FuturesEnv8 import FuturesEnv8
 from .FuturesEnv9 import FuturesEnv9
 from .FuturesEnv11 import FuturesEnv11
 from .FuturesEnv11_test import FuturesEnv11_test
+from .FuturesEnv11_train import FuturesEnv11_train
+from .FuturesEnv12 import FuturesEnv12
+from .FuturesEnv12_test import FuturesEnv12_test
