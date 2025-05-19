@@ -343,7 +343,7 @@ class FuturesEnv11(gym.Env):
         profit = 0
         trade_success = False
         profit_rate = 0
-        
+        do = 0      # 거래 행동을 기록하기 위한 변수
         
         # 보상 초기화
         immediate_reward = 0
@@ -359,7 +359,7 @@ class FuturesEnv11(gym.Env):
             action_reward += 0.1  # HOLD에 대한 작은 보상
             
         # 학습 시간 설정
-        if self.num > 7 * 24 * 2:
+        if self.num > 30 * 24 * 2:
             done = True
             
         # 수익 목표 달성 시 추가 보상
@@ -426,6 +426,7 @@ class FuturesEnv11(gym.Env):
                 self.position = position_direction
                 self.size = position_size
                 self.entry_price = current_price
+                do = position_direction
 
             self.balance_profit_rate = (self.balance - self.initial_balance) / self.initial_balance 
 
@@ -442,11 +443,13 @@ class FuturesEnv11(gym.Env):
                 exit_cost = current_price * self.trade_fee
                 self.balance -= exit_cost * self.size
                 self.size = 1e-6
+                do = self.position * 2
                 self.position = FLAT
                 #position_direction = FLAT
                 profit_rate = profit / self.entry_price
                 exit_reward = (profit - exit_cost) / self.entry_price * 100
                 action_reward += -5  # 손절매 실행에 대한 보상 (리스크 관리)
+                
 
             elif unrealized_profit > self.take_profit_threshold:
                 profit = self.position * (current_price - self.entry_price)
@@ -454,10 +457,12 @@ class FuturesEnv11(gym.Env):
                 exit_cost = current_price * self.trade_fee
                 self.balance -= exit_cost * self.size
                 self.size = 1e-6
+                do = self.position * 2
                 self.position = FLAT
                 profit_rate = profit / self.entry_price
                 exit_reward = (profit - exit_cost) / self.entry_price * 100
                 action_reward += 5  # 익절매 실행에 대한 보상 (리스크 관리)
+                
                 self.success += 1
 
         # 최종 보상 계산 (즉각적인 보상 + 청산 보상)
@@ -492,7 +497,7 @@ class FuturesEnv11(gym.Env):
             'balance': self.balance,
             'profit_rate': float((self.balance - self.initial_balance) * 100 / self.initial_balance),
             'trade_success': trade_success,
-            'position': position_direction
+            'position': do
         }
 
         # 학습 종료 시 학습 상태 기록

@@ -235,27 +235,26 @@ def plot_episode_metrics(balance_history, profit_history, price_history, profit_
     ax1_bottom.tick_params(axis='y', labelcolor='gray')
     
     # 포지션 진입/정리 지점 표시
-    for i in range(1, len(actions)):
+    for i in range(0, len(actions)):
         # 포지션 진입 지점
-        if actions[i] != actions[i-1] and actions[i-1] == 0:  # FLAT에서 LONG/SHORT로 진입
-            if actions[i] == 1:  # 롱 진입
-                ax1.scatter(i, price_history[i], color='green', marker='^', s=150, alpha=0.4, label='Enter Long' if i == 1 else "")
-            elif actions[i] == -1:  # 숏 진입
-                ax1.scatter(i, price_history[i], color='red', marker='v', s=150, alpha=0.4, label='Enter Short' if i == 1 else "")
+        if actions[i] == 1:  # 롱 진입
+            ax1.scatter(i, price_history[i], color='green', marker='^', s=150, alpha=0.4, label='Enter Long' if i == 1 else "")
+        elif actions[i] == -1:  # 숏 진입
+            ax1.scatter(i, price_history[i], color='red', marker='v', s=150, alpha=0.4, label='Enter Short' if i == 1 else "")
         
         # 포지션 정리 지점
-        if actions[i] == 0 and actions[i-1] != 0:  # LONG/SHORT에서 FLAT으로 전환
+        if actions[i] == 2:  # 롱 포지션 정리
             profit = profit_history[i] if i < len(profit_history) else 0
-            if actions[i-1] == 1:  # 롱 포지션 정리
-                if profit > 0:  # 수익 실현
-                    ax1.scatter(i, price_history[i], color='blue', marker='o', s=100, alpha=0.8, label='Close Long with Profit' if i == 1 else "")
-                else:  # 손실 실현
-                    ax1.scatter(i, price_history[i], color='purple', marker='o', s=100, alpha=0.8, label='Close Long with Loss' if i == 1 else "")
-            else:  # 숏 포지션 정리
-                if profit > 0:  # 수익 실현
-                    ax1.scatter(i, price_history[i], color='blue', marker='x', s=100, alpha=0.8, label='Close Short with Profit' if i == 1 else "")
-                else:  # 손실 실현
-                    ax1.scatter(i, price_history[i], color='purple', marker='x', s=100, alpha=0.8, label='Close Short with Loss' if i == 1 else "")
+            if profit > 0:  # 수익 실현
+                ax1.scatter(i, price_history[i], color='blue', marker='o', s=100, alpha=0.8, label='Close Long with Profit' if i == 1 else "")
+            else:  # 손실 실현
+                ax1.scatter(i, price_history[i], color='purple', marker='o', s=100, alpha=0.8, label='Close Long with Loss' if i == 1 else "")
+        elif actions[i] == -2:  # 숏 포지션 정리
+            profit = profit_history[i] if i < len(profit_history) else 0
+            if profit > 0:  # 수익 실현
+                ax1.scatter(i, price_history[i], color='blue', marker='x', s=100, alpha=0.8, label='Close Short with Profit' if i == 1 else "")
+            else:  # 손실 실현
+                ax1.scatter(i, price_history[i], color='purple', marker='x', s=100, alpha=0.8, label='Close Short with Loss' if i == 1 else "")
     
     # 범례 추가
     handles, labels = ax1.get_legend_handles_labels()
@@ -281,13 +280,18 @@ def plot_episode_metrics(balance_history, profit_history, price_history, profit_
     
     # 3. 행동 분포 그래프
     ax3 = plt.subplot(gs[1, 1])
+    
+    # 포지션 정리 액션을 플랫으로 처리
+    actions = np.array([0 if a == 2 or a == -2 else a for a in actions])
+    # flat 포지션 제외
+    actions = actions[actions != 0]
     action_indices = np.array(actions).astype(int) + 1
-    action_counts = np.bincount(action_indices, minlength=3)
-    action_probs = action_counts / len(action_indices)
+    action_counts = np.bincount(action_indices, minlength=3)[[0, 2]]  # 0번과 2번 인덱스만 사용
+    action_probs = action_counts / len(action_indices) if len(action_indices) > 0 else np.zeros(2)
     entropy = -np.sum(action_probs * np.log2(action_probs + 1e-8))
     
-    action_labels = ['Short', 'Flat', 'Long']
-    action_colors = ['red', 'gray', 'green']
+    action_labels = ['Short', 'Long']
+    action_colors = ['red', 'green']
     ax3.bar(action_labels, action_probs, color=action_colors)
     ax3.set_title(f'Action Distribution (Entropy: {entropy:.2f})', fontsize=12)
     ax3.set_ylabel('Probability', fontsize=10)

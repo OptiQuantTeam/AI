@@ -338,7 +338,7 @@ class FuturesEnv11_test(gym.Env):
         profit = 0
         trade_success = False
         profit_rate = 0
-        
+        do = 0      # 거래 행동을 기록하기 위한 변수
         
         # 보상 초기화
         immediate_reward = 0
@@ -421,6 +421,7 @@ class FuturesEnv11_test(gym.Env):
                 self.position = position_direction
                 self.size = position_size
                 self.entry_price = current_price
+                do = position_direction
 
             self.balance_profit_rate = (self.balance - self.initial_balance) / self.initial_balance 
 
@@ -436,6 +437,7 @@ class FuturesEnv11_test(gym.Env):
                 exit_cost = current_price * self.trade_fee
                 self.balance -= exit_cost * self.size
                 self.size = 1e-6
+                do = self.position * 2
                 self.position = FLAT
                 #position_direction = FLAT
                 profit_rate = profit / self.entry_price
@@ -448,6 +450,7 @@ class FuturesEnv11_test(gym.Env):
                 exit_cost = current_price * self.trade_fee
                 self.balance -= exit_cost * self.size
                 self.size = 1e-6
+                do = self.position * 2
                 self.position = FLAT
                 profit_rate = profit / self.entry_price
                 exit_reward = (profit - exit_cost) / self.entry_price * 100
@@ -490,7 +493,7 @@ class FuturesEnv11_test(gym.Env):
             'balance': self.balance,
             'profit_rate': float((self.balance - self.initial_balance) * 100 / self.initial_balance),
             'trade_success': trade_success,
-            'position': position_direction
+            'position': do
         }
 
         # 학습 종료 시 학습 상태 기록
