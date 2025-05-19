@@ -2,10 +2,12 @@
 __pycache__
 *.pt
 .env
-*.json
-*.pth
+models/*
+json/*
 *.png
 *.log*
 tmp/*
 tmp_src/*
 */__pycache__
+output/*
+checkpoints/*

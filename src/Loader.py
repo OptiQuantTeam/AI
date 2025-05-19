@@ -209,7 +209,8 @@ class Loader():
             lr_critic=lr_critic,
             gamma=gamma,
             epsilon=epsilon,
-            epochs=epochs
+            epochs=epochs,
+            batch_size=batch_size
         )
 
         # 모델 가중치 로드
@@ -299,6 +300,7 @@ class Loader():
                 lr_actor=lr_actor,
                 lr_critic=lr_critic,
                 gamma=gamma,
+                batch_size=batch_size,
                 epsilon=epsilon,
                 epochs=epochs)
 
@@ -376,6 +378,9 @@ class Loader():
 
         self.logger.render_training_start(time=(datetime.datetime.now() + datetime.timedelta(hours=9)).strftime('%Y-%m-%d_%H-%M-%S'))
 
+        # Agent 학습 모드 전환
+        self.agent.test_mode = False
+
         # 학습 진행 상황
         if 'training_state' in self.learning_info:
             training_state = self.learning_info['training_state']
@@ -422,7 +427,7 @@ class Loader():
                     episode_reward += reward
                     state = next_state
                     
-                    if len(self.agent.memory) >= self.agent.batch_size:
+                    if len(self.agent.memory) >= self.agent.batch_size*4:
                         #update_count += agent.update(success_rate=sum(episode_results) / len(episode_results))
                         update_count += self.agent.update()
                     balance_history.append(info['balance'])
@@ -448,7 +453,7 @@ class Loader():
                 episode_win_rate.append(win_rate)
 
                 # 학습 진행 상황 평가 및 시각화 (50 에피소드마다)
-                if (episode + 1) % 50 == 0:
+                if (episode + 1) % 1 == 0:
                     # 학습 진행 상황 평가 및 시각화
                     os.makedirs(f'results/{self.agent.model_name}/learning', exist_ok=True)
                     os.makedirs(f'results/{self.agent.model_name}/performance', exist_ok=True)
@@ -1002,15 +1007,18 @@ class Loader():
                 
 
                 if is_normal_exit:
-                    os.makedirs('models', exist_ok=True)
-                    os.makedirs('models/learning_info', exist_ok=True)
+                    os.makedirs('saved_models', exist_ok=True)
+                    os.makedirs('saved_models/learning_info', exist_ok=True)
                     os.makedirs('json', exist_ok=True)
                     os.makedirs(f'results/{self.agent.model_name}', exist_ok=True)
 
+                    # model은 models 폴더에 저장, 쉘 스크립트로 AI_Lambda 레포지토리에 업로드
+                    # learning_info는 저장할 필요 없음
+                    # metadata는 AWS S3에 저장, 
                     
 
-                    self.agent.save_model(f'models/{self.agent.model_name}_{time}.pth')
-                    self.agent.save_learning_state(learning_info, f'models/learning_info/{self.agent.model_name}_{time}.json')                    
+                    self.agent.save_model(f'saved_models/{self.agent.model_name}_{time}.pth')
+                    self.agent.save_learning_state(learning_info, f'saved_models/learning_info/{self.agent.model_name}_{time}.json')                    
                     with open(f'json/{self.agent.model_name}_metadata_{time}.json', 'w') as f:
                         json.dump(metadata, f, indent=4)
                     
@@ -1066,9 +1074,13 @@ class Loader():
     def test(self):
         self.logger.render_training_start(time=(datetime.datetime.now() + datetime.timedelta(hours=9)).strftime('%Y-%m-%d_%H-%M-%S'))
         
+        # Agent 테스트 모드 전환
+        self.agent.test_mode = True
+        
         # 학습 진행 상황
         start_episode = 0
         end_episode = 20
+        
         # 성능 지표
         episode_rewards = []
         episode_results = []
