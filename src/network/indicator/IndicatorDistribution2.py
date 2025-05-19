@@ -53,6 +53,16 @@ class IndicatorDistribution2(nn.Module):
         ha_lower_wick = state[:, 5]  # ha_lower_wick
         ha_upper_wick = state[:, 6]  # ha_upper_wick
         
+        # 이전 캔들 정보
+        prev_ha_high = state[:, 7]     # 이전 ha_high
+        prev_ha_low = state[:, 8]      # 이전 ha_low
+        prev_ha_body = state[:, 9]     # 이전 ha_body
+        
+        # 현재와 이전 캔들의 관계
+        high_diff = ha_high - prev_ha_high
+        low_diff = ha_low - prev_ha_low
+        body_diff = ha_body - prev_ha_body
+        
         # 캔들 패턴 분석 - 추세 추종 강화
         is_bullish = ha_close > ha_open  # 양봉
         is_bearish = ha_close < ha_open  # 음봉
@@ -61,42 +71,40 @@ class IndicatorDistribution2(nn.Module):
         has_small_upper_wick = ha_upper_wick < 1e-6  # 작은 위꼬리
         
         # 연속 캔들 패턴 확인 (추세 강화)
-        prev_close = torch.roll(ha_close, 1, 0)
-        prev_open = torch.roll(ha_open, 1, 0)
-        trend_bullish = torch.logical_and(is_bullish, ha_close > prev_close)  # 상승 추세
-        trend_bearish = torch.logical_and(is_bearish, ha_close < prev_close)  # 하락 추세
+        trend_bullish = torch.logical_and(is_bullish, body_diff > 0)  # 상승 추세
+        trend_bearish = torch.logical_and(is_bearish, body_diff < 0)  # 하락 추세
         
         ha_signal_tensor = torch.zeros((batch_size, self.action_dim), device=state.device)
         
         # 강한 상승 신호 - 추세 추종 강화
         strong_bullish = torch.logical_and(
             torch.logical_and(trend_bullish, body_size > 0.5),
-            has_small_upper_wick
+            torch.logical_and(high_diff > 0, low_diff > 0)  # 고가와 저가 모두 상승
         )
         ha_signal_tensor[strong_bullish, 2] = 0.7  # LONG 가중치 조정
         
         # 강한 하락 신호 - 추세 추종 강화
         strong_bearish = torch.logical_and(
             torch.logical_and(trend_bearish, body_size > 0.5),
-            has_small_lower_wick
+            torch.logical_and(high_diff < 0, low_diff < 0)  # 고가와 저가 모두 하락
         )
         ha_signal_tensor[strong_bearish, 0] = 0.7  # SHORT 가중치 조정
         
         # 3) 200 MA 분석 - 추세 추종 강화
-        ma_200 = state[:, 7]        # ma_200
-        ma_200_signal = state[:, 8]  # ma_200_signal
+        ma_200 = state[:, 10]        # ma_200
+        ma_200_signal = state[:, 11]  # ma_200_signal
         
         # MA 기울기 계산 (추세 강도)
         ma_slope = (ma_200 - torch.roll(ma_200, 1, 0)) / ma_200
         
         # 4) Stochastic RSI 분석 - 과매수/과매도 구간 조정
-        stoch_rsi = state[:, 9]      # stoch_rsi
-        stoch_signal = state[:, 10]   # stoch_signal
+        stoch_rsi = state[:, 12]      # stoch_rsi
+        stoch_signal = state[:, 13]   # stoch_signal
         
         # 5) 볼린저 밴드 분석 - 추세 추종 강화
-        bb_upper = state[:, 11]      # bb_upper
-        bb_middle = state[:, 12]     # bb_middle
-        bb_lower = state[:, 13]      # bb_lower
+        bb_upper = state[:, 14]      # bb_upper
+        bb_middle = state[:, 15]     # bb_middle
+        bb_lower = state[:, 16]      # bb_lower
         
         bb_signal_tensor = torch.zeros((batch_size, self.action_dim), device=state.device)
         
@@ -120,7 +128,7 @@ class IndicatorDistribution2(nn.Module):
         stoch_signal_tensor = torch.zeros((batch_size, self.action_dim), device=state.device)
         
         # Stochastic RSI 과매수/과매도 구간 - 추세 고려
-        overbought = torch.logical_and(stoch_rsi > 0.8, ma_slope < 0)  # 과매수 + 하락 추세
+        overbought = torch.logical_and(stoch_rsi > 0.8, ma_slope < 0)  # 과매수 + 하락 추세"
         oversold = torch.logical_and(stoch_rsi < 0.2, ma_slope > 0)    # 과매도 + 상승 추세
         
         # Stochastic RSI 신호

@@ -29,14 +29,14 @@ class PPO3:
         self.actor_critic = AC.ActorCritic2(state_dim, action_dim).to(device)
         self.indicator_distribution = ID.IndicatorDistribution2(state_dim, action_dim).to(device)
         
-        self.optimizer = optim.SGD([
+        # 액터 옵티마이저
+        self.optimizer = optim.Adam([
             {'params': self.actor_critic.feature_extraction.parameters()},
             {'params': self.actor_critic.actor_direction.parameters()},
-            {'params': self.actor_critic.actor_direction_std},            
-            {'params': self.actor_critic.critic.parameters(), 'lr': lr_critic},
-            #{'params': self.indicator_distribution.final_network.parameters(), 'lr': lr_critic}
-        ], lr=lr_actor, momentum=0.9, dampening=0, weight_decay=0, nesterov=True)
-        
+            {'params': self.actor_critic.actor_direction_std},
+            {'params': self.actor_critic.critic.parameters(), 'lr': lr_critic}
+        ], lr=lr_actor)
+
         self.state_dim = state_dim
         self.action_dim = action_dim
 
@@ -48,51 +48,64 @@ class PPO3:
         self.batch_size = batch_size
         self.memory = deque()
         self.performances = deque()
-        
+        self.alpha = 0.3
         # KL 발산 관련 파라미터
         self.kl_target = kl_target
         self.kl_coef = kl_coef
+        self.test_mode = False
         
     def select_action(self, state):
         state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-        state = state[:, 5:]
+        state = state[:, 5:]  # 5번 인덱스부터 마지막까지의 데이터만 사용
+        state2 = state[:, [7,9,10,11,16,17]]
+        self.actor_critic.eval()
         with torch.no_grad():
-            value, action_probs, action_logits = self.actor_critic(state)
+            value, action_probs, action_logits = self.actor_critic(state2)
             pi_I = self.indicator_distribution(state)
-            
-            # Actor network에서 샘플링
-            actor_dist = torch.distributions.Categorical(action_probs)
-            actor_action_idx = actor_dist.sample()
-            actor_action = actor_action_idx.float() - 1.0
-            actor_log_prob = actor_dist.log_prob(actor_action_idx)
-            
-            # Indicator distribution에서 샘플링
-            indicator_dist = torch.distributions.Categorical(pi_I)
-            indicator_action_idx = indicator_dist.sample()
-            indicator_action = indicator_action_idx.float() - 1.0
-            indicator_log_prob = indicator_dist.log_prob(indicator_action_idx)
-            
-            # 두 샘플링 결과가 같은 경우
-            if actor_action_idx == indicator_action_idx:
-                # 두 분포의 평균을 사용
-                alpha = 0.7  # AI 결정 가중치를 0.7로 증가
-                pi = alpha * action_probs + (1 - alpha) * pi_I
-                action_dist = torch.distributions.Categorical(pi)
-                action_idx = action_dist.sample()
-                action = action_idx.float() - 1.0
-                log_prob = action_dist.log_prob(action_idx)
+
+            if not self.test_mode:
+                ai_dist = torch.distributions.Categorical(action_probs)
+                ai_idx = ai_dist.sample()
+                ai = ai_idx.float() - 1.0
+
+                indicator_dist = torch.distributions.Categorical(pi_I)
+                indicator_idx = indicator_dist.sample()
+                indicator = indicator_idx.float() - 1.0
+
+                if ai != indicator:
+                    # 두 분포의 평균을 사용
+                    pi = self.alpha * action_probs + (1 - self.alpha) * pi_I
+                    action_dist = torch.distributions.Categorical(pi)
+                    action_idx = action_dist.sample()
+                    action = action_idx.float() - 1.0
+                    log_prob = action_dist.log_prob(action_idx)
+                else:
+                    action = ai
+                    log_prob = ai_dist.log_prob(ai_idx)
             else:
-                # Actor network의 선택을 우선시
-                #action = actor_action
-                #action_idx = actor_action_idx
-                action = indicator_action
-                action_idx = indicator_action_idx
-                log_prob = indicator_log_prob
-        
+                # 테스트 모드에서는 가장 높은 확률을 가진 액션 선택
+                ai_idx = torch.argmax(action_probs)
+                ai = ai_idx.float() - 1.0
+                log_prob_ai = torch.log(action_probs)
+
+                indicator_idx = torch.argmax(pi_I)
+                indicator = indicator_idx.float() - 1.0
+                
+
+                if ai != indicator:
+                    pi = self.alpha * action_probs + (1 - self.alpha) * pi_I
+                    action_idx = torch.argmax(pi)
+                    action = action_idx.float() - 1.0
+                    log_prob = torch.log(pi)
+                else:
+                    action = ai
+                    log_prob = log_prob_ai
+                    
+                    
         return (
-            action.cpu().numpy()[0],
+            action.cpu().numpy(),
             value.cpu().numpy()[0],
-            log_prob.cpu().numpy()[0]
+            log_prob.cpu().numpy()
         )
         
     def store_transition(self, transition):
@@ -120,7 +133,7 @@ class PPO3:
             log_prob_batch.append(log_prob)
             value_batch.append(value)
             done_batch.append(done)
-
+        
         # 텐서로 변환
         state_batch = torch.FloatTensor(np.array(state_batch)).to(self.device)
         action_batch = torch.FloatTensor(np.array(action_batch)).to(self.device)
@@ -135,11 +148,13 @@ class PPO3:
         returns = []
         gae = 0
         
+        self.actor_critic.train()
         with torch.no_grad():
             next_state_batch = next_state_batch[:, 5:]
-            next_value = self.actor_critic(next_state_batch)[0]  # value는 첫 번째 반환값
+            next_state_batch2 = next_state_batch[:, [7,9,10,11,16,17]]
+            next_value = self.actor_critic(next_state_batch2)[0]  # value는 첫 번째 반환값
             next_value = next_value.squeeze()
-
+            
             for r, v, done, next_v in zip(
                 reversed(reward_batch),
                 reversed(old_value_batch),
@@ -152,19 +167,15 @@ class PPO3:
                 else:
                     delta = r + self.gamma * next_v - v
                     gae = delta + self.gamma * 0.95 * gae
-
+                
                 returns.insert(0, gae + v)
                 advantages.insert(0, gae)
 
-        
         advantages = torch.FloatTensor(advantages).to(self.device)
         returns = torch.FloatTensor(returns).to(self.device)
         
         # 정규화
-        if len(advantages) > 1:  # advantages가 2개 이상일 때만 정규화
-            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-        else:  # advantages가 1개일 때는 0으로 설정
-            advantages = torch.zeros_like(advantages)
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         
         # PPO 업데이트
         final_advantage = None
@@ -182,23 +193,22 @@ class PPO3:
                 
                 if len(idx) < self.batch_size:
                     break
-                
                 # 현재 미니배치
                 state = state_batch[idx]
                 state = state[:, 5:]
+                state2 = state[:, [7,9,10,11,16,17]]
                 action = action_batch[idx]
                 advantage = advantages[idx]
                 return_ = returns[idx]
                 old_log_prob = old_log_prob_batch[idx]
                 
                 # 현재 정책의 행동 분포
-                value, action_probs, action_logits = self.actor_critic(state)
+                value, action_probs, action_logits = self.actor_critic(state2)
                 pi_I = self.indicator_distribution(state)
-                alpha = 0.7  # AI 결정 가중치를 0.7로 증가
-                pi = alpha * action_probs + (1 - alpha) * pi_I
+                pi = self.alpha * action_probs + (1 - self.alpha) * pi_I
                 
                 # Categorical 분포에서 액션 샘플링
-                action_dist = torch.distributions.Categorical(pi)
+                action_dist = torch.distributions.Categorical(logits=pi)
                 action_idx = action_dist.sample()
                 new_action = action_idx.float() - 1.0
                 new_log_prob = action_dist.log_prob(action_idx)
@@ -222,37 +232,43 @@ class PPO3:
                 
                 # 2. Critic Loss - Huber Loss
                 value = value.squeeze(-1)
-                critic_loss = nn.SmoothL1Loss()(value, return_)
+                critic_loss = torch.clamp((value - return_)**2, max=5.0).mean()
+                #critic_loss = nn.SmoothL1Loss()(value, return_)
                 
                 # 3. 엔트로피 손실 (탐색을 위한)
                 entropy_loss = -0.01 * action_dist.entropy().mean()
 
+                # 액터 업데이트                
+                #_, action_probs, action_logits = self.actor_critic(state2)
+
+                actor_total_loss = actor_loss + kl_penalty + entropy_loss
                 
-                # 전체 손실 함수
-                loss = actor_loss + 0.5 * critic_loss + entropy_loss + kl_penalty
+                
+                # 전체 손실 함수 (모니터링용)
+                total_loss = actor_total_loss + 0.3 * critic_loss
+                
+                self.optimizer.zero_grad()
+                total_loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.actor_critic.parameters(), 0.5)
+                self.optimizer.step()
                 
                 final_advantage = advantage.mean().item()
                 final_actor_loss = actor_loss.item()
                 final_critic_loss = critic_loss.item()
                 final_entropy_loss = entropy_loss.item()
-                final_total_loss = loss.item()
+                final_total_loss = total_loss.item()
                 final_kl_divergence = kl_divergence.item()
-                # 역전파 및 최적화
-                self.optimizer.zero_grad()
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.actor_critic.parameters(), 0.5)
-                self.optimizer.step()
-        
+                
         # 성능 지표 저장
-        if final_advantage is not None:
-            self.store_performance((
-                final_advantage,
-                final_actor_loss,
-                final_critic_loss,
-                final_entropy_loss,
-                final_total_loss,
-                final_kl_divergence
-            ))
+        self.store_performance((
+            final_advantage,
+            final_actor_loss,
+            final_critic_loss,
+            final_entropy_loss,
+            final_total_loss,
+            final_kl_divergence
+        ))
+        
         # 메모리 비우기
         self.memory.clear()
         return 1
