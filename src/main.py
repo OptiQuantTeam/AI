@@ -5,7 +5,7 @@ from Loader import Loader
 '''
 if __name__ == "__main__":
     env_path = 'data/preprocess/BTCUSDT/BTCUSDT-30m-HEIKIN_ASHI_200EMA_2020.csv'
-    env_path_test = 'data/preprocess/BTCUSDT/BTCUSDT-30m-HEIKIN_ASHI_200EMA_test2022.csv'
+    env_path_test = 'data/preprocess/BTCUSDT/BTCUSDT-30m-HEIKIN_ASHI_200EMA_test2024.csv'
     
     while True: 
         print('학습 방법을 선택해주세요.')

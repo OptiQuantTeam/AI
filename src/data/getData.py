@@ -1,5 +1,5 @@
 import pandas as pd
-import indicator as ind
+import data.indicator as ind
 import requests
 from datetime import datetime
 import numpy as np
@@ -56,10 +56,10 @@ def getCurrentData(symbol, interval='30m', limit=None):
     df['Close time'] = df['Close time'].apply(lambda x : datetime.fromtimestamp(x/1000))
     df = df.set_index('Open time')
     
-    preprocess_weekly(df, symbol, interval)
+    env_path = preprocess_weekly(df, symbol, interval)
     #df.to_csv(f'/workspace/data/preprocess/{symbol}/{symbol}-{interval}-weekly.csv')
 
-    return True
+    return env_path
 
 def preprocess_weekly(data, ticker='BTCUSDT', interval='1d'):
 
@@ -126,46 +126,18 @@ def preprocess_weekly(data, ticker='BTCUSDT', interval='1d'):
     
     # NaN 값 제거
     data = data.dropna()
-    print(data)
-    data.to_csv(f'/workspace/data/preprocess/{ticker}/{ticker}-{interval}-weekly.csv')
-    return True
+    
+    os.makedirs(f'/workspace/src/data/preprocess', exist_ok=True)
+    os.makedirs(f'/workspace/src/data/preprocess/{ticker}', exist_ok=True)
+
+    data.to_csv(f'/workspace/src/data/preprocess/{ticker}/{ticker}-{interval}-weekly.csv')
+    return f'/workspace/src/data/preprocess/{ticker}/{ticker}-{interval}-weekly.csv'
 #timestamp = 1685577600000
 #23년 6월 1일 오전 9시의 타임스탬프
 #timestamp = 1732792920000
-
-def getMonthData(path, ticker='BTCUSDT', interval='30m'):
-    # 전처리된 데이터 로드
-    data = pd.read_csv(path, index_col=0)
-    
-    # 파일 경로에서 파일 이름 분리
-    file_name = os.path.basename(path)  # 파일 이름만 추출
-    file_name_without_ext = os.path.splitext(file_name)[0]  # 확장자 제외한 파일 이름
-    
-    # 인덱스를 datetime으로 변환
-    data.index = pd.to_datetime(data.index)
-    
-    # 연도와 월별로 그룹화
-    for year in data.index.year.unique():
-        for month in range(1, 13):
-            # 해당 연도와 월의 데이터 추출
-            month_data = data[(data.index.year == year) & (data.index.month == month)]
-            
-            if not month_data.empty:
-                # 파일명 생성 (예: BTCUSDT-30m-2023-01.csv)
-                filename = f'/workspace/data/preprocess/{ticker}/{file_name_without_ext}-{month:02d}.csv'
-                
-                # 디렉토리가 없으면 생성
-                os.makedirs(os.path.dirname(filename), exist_ok=True)
-                
-                # 데이터 저장
-                month_data.to_csv(filename)
-                print(f"Saved {filename} with {len(month_data)} rows")
-    
-    return True
-
 if __name__ == '__main__':
    
-    #df_path =  getCurrentData("BTCUSDT", "30m", limit=336)
-    
+    df_path =  getCurrentData("BTCUSDT", "30m", limit=336)
+    print(df_path)
     #df.to_csv("./BTCUSDT-15m-"+str(year)+".csv")
-    getMonthData(f'/workspace/data/preprocess/BTCUSDT/BTCUSDT-30m-HEIKIN_ASHI_200EMA_test2024.csv')
+    

@@ -22,6 +22,7 @@ class PPO3:
         epsilon=0.2,
         epochs=10,
         batch_size=32,
+        alpha=0.5,
         kl_target=0.01,  # KL 발산 목표값
         kl_coef=0.5,     # KL 발산 계수
         device="cuda" if torch.cuda.is_available() else "cpu"
@@ -48,7 +49,7 @@ class PPO3:
         self.batch_size = batch_size
         self.memory = deque()
         self.performances = deque()
-        self.alpha = 0.3
+        self.alpha = alpha
         # KL 발산 관련 파라미터
         self.kl_target = kl_target
         self.kl_coef = kl_coef
@@ -58,7 +59,7 @@ class PPO3:
         state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
         state = state[:, 5:]  # 5번 인덱스부터 마지막까지의 데이터만 사용
         state2 = state[:, [7,9,10,11,16,17]]
-        self.actor_critic.eval()
+        #self.actor_critic.eval()
         with torch.no_grad():
             value, action_probs, action_logits = self.actor_critic(state2)
             pi_I = self.indicator_distribution(state)
@@ -94,6 +95,7 @@ class PPO3:
 
                 if ai != indicator:
                     pi = self.alpha * action_probs + (1 - self.alpha) * pi_I
+                    
                     action_idx = torch.argmax(pi)
                     action = action_idx.float() - 1.0
                     log_prob = torch.log(pi)
@@ -148,7 +150,7 @@ class PPO3:
         returns = []
         gae = 0
         
-        self.actor_critic.train()
+        #self.actor_critic.train()
         with torch.no_grad():
             next_state_batch = next_state_batch[:, 5:]
             next_state_batch2 = next_state_batch[:, [7,9,10,11,16,17]]

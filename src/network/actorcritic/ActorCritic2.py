@@ -71,16 +71,24 @@ class ActorCritic2(nn.Module):
         )
         
     def forward(self, state):
+        if state.size(0) == 1:
+            self.feature_extraction.eval()
+            self.actor_direction.eval()
+            self.critic.eval()
+        else:
+            self.feature_extraction.train()
+            self.actor_direction.train()
+            self.critic.train()
+        
         # 상태 벡터에는 이미 기술적 지표들이 포함되어 있음
         features = self.feature_extraction(state)
         
         # 액터: 행동 분포
         action_logits = self.actor_direction(features)
-
+        
         # softmax를 사용하여 확률 계산
-        #action_probs = F.softmax(action_logits, dim=-1)
-        gumbel_noise = -torch.log(-torch.log(torch.rand_like(action_logits)))
-        action_probs = F.softmax((action_logits + gumbel_noise) / 0.5, dim=-1)
+        action_probs = F.softmax(action_logits, dim=-1)
+
         # 크리틱: 상태 가치
         value = self.critic(features)
         

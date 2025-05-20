@@ -11,3 +11,4 @@ tmp_src/*
 */__pycache__
 output/*
 checkpoints/*
+saved_model/*

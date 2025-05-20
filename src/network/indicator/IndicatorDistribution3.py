@@ -156,10 +156,7 @@ class IndicatorDistribution3(nn.Module):
         
         # 8) 최종 확률 분포 계산
         mixed_logits = default_logits + combined_signal
-        
-        gumbel_noise = -torch.log(-torch.log(torch.rand_like(mixed_logits)))
-        final_probs = F.softmax((mixed_logits + gumbel_noise) / 0.5, dim=-1)
-        
+        final_probs = F.softmax(mixed_logits, dim=-1)
         
         return final_probs
         
