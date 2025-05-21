@@ -12,8 +12,8 @@ import glob
 
 class Loader():
     def __init__(self, env_path, env_path_test, further=None, auto=False):
-        self.env = env.FuturesEnv11(path=env_path)
-        self.test_env = env.FuturesEnv11_test(path=env_path_test)
+        self.env = env.FuturesEnv(path=env_path)
+        self.test_env = env.FuturesEnv_test(path=env_path_test)
 
         if auto:
             self.agent, self.model_info, self.learning_info = self._load_model(further, auto)
@@ -202,7 +202,7 @@ class Loader():
                     return
                 
         # PPO 에이전트 재생성
-        ppo_agent = algo.PPO3(
+        ppo_agent = algo.PPO(
             state_dim=state_dim,
             action_dim=action_dim,
             model_name=model_name,
@@ -297,7 +297,7 @@ class Loader():
         alpha = float(input('alpha [default: 0.5]: ') or "0.5")
         epochs = int(input('epochs [default: 20]: ') or "20")
 
-        ppo_agent = algo.PPO3(
+        ppo_agent = algo.PPO(
                 state_dim=self.env.observation_space.shape[0],
                 action_dim=self.env.action_space.n,
                 model_name=model_name,
@@ -460,7 +460,7 @@ class Loader():
                 episode_win_rate.append(win_rate)
 
                 # 학습 진행 상황 평가 및 시각화 (50 에피소드마다)
-                if (episode + 1) % 20 == 0:
+                if (episode + 1) % 1 == 0:
                     # 학습 진행 상황 평가 및 시각화
                     os.makedirs(f'results/{self.agent.model_name}/learning', exist_ok=True)
                     os.makedirs(f'results/{self.agent.model_name}/performance', exist_ok=True)
@@ -697,23 +697,21 @@ class Loader():
             result = {
                 'environment_data': {
                     'episode_reward': episode_reward,
-                    'final_balance': self.env.balance,
-                    'initial_balance': self.env.initial_balance,
-                    'total_steps': self.env.num,     
+                    'final_balance': self.test_env.balance,
+                    'initial_balance': self.test_env.initial_balance,
+                    'total_steps': self.test_env.num,     
                 },
                 'performance_metrics': {
-                    'total_profit': self.env.balance - self.env.initial_balance,
-                    'profit_rate': (self.env.balance - self.env.initial_balance) / self.env.initial_balance * 100,
+                    'total_profit': self.test_env.balance - self.test_env.initial_balance,
+                    'profit_rate': (self.test_env.balance - self.test_env.initial_balance) / self.test_env.initial_balance * 100,
                     'profitable_trades': sum(1 for i in range(1, len(balance_history)) if balance_history[i] > balance_history[i-1]),
-                    'average_profit_per_trade': (self.env.balance - self.env.initial_balance) / len(actions) if actions else 0
                 },
                 'trading_statistics': {
                     'long_positions': sum(1 for action in actions if action == 1),
                     'short_positions': sum(1 for action in actions if action == -1),
                     'neutral_positions': sum(1 for action in actions if action == 0),
                     'consecutive_wins': self._calculate_consecutive_wins(balance_history),
-                    'consecutive_losses': self._calculate_consecutive_losses(balance_history),
-                    'average_holding_time': self.env.num / len(actions) if actions else 0
+                    'consecutive_losses': self._calculate_consecutive_losses(balance_history)
                 }
             }
 
@@ -763,10 +761,10 @@ class Loader():
                     
                     # 성능 지표
                     'performance_metrics': {
-                    'total_profit': self.env.balance - self.env.initial_balance,
-                    'profit_rate': (self.env.balance - self.env.initial_balance) / self.env.initial_balance * 100,
+                    'total_profit': self.test_env.balance - self.test_env.initial_balance,
+                    'profit_rate': (self.test_env.balance - self.test_env.initial_balance) / self.test_env.initial_balance * 100,
                     'profitable_trades': sum(1 for i in range(1, len(balance_history)) if balance_history[i] > balance_history[i-1]),
-                    'average_profit_per_trade': (self.env.balance - self.env.initial_balance) / len(actions) if actions else 0
+                    'average_profit_per_trade': (self.test_env.balance - self.test_env.initial_balance) / len(actions) if actions else 0
                     },
 
                     # 테스트 거래 통계 
@@ -775,18 +773,17 @@ class Loader():
                         'short_positions': sum(1 for action in actions if action == -1),
                         'neutral_positions': sum(1 for action in actions if action == 0),
                         'consecutive_wins': self._calculate_consecutive_wins(balance_history),
-                        'consecutive_losses': self._calculate_consecutive_losses(balance_history),
-                        'average_holding_time': self.env.num / len(actions) if actions else 0
+                        'consecutive_losses': self._calculate_consecutive_losses(balance_history)
                     },
     
                         
                     # 환경 정보
                     'environment_info': {
-                        'data_path': self.env.path if hasattr(self.env, 'path') else None,
-                        'total_data_length': len(self.env.data) if hasattr(self.env, 'data') else 0,
+                        'data_path': self.test_env.path if hasattr(self.test_env, 'path') else None,
+                        'total_data_length': len(self.test_env.data) if hasattr(self.test_env, 'data') else 0,
                         'training_period': {
-                            'start': str(self.env.data.index[0]) if hasattr(self.env, 'data') else None,
-                            'end': str(self.env.data.index[-1]) if hasattr(self.env, 'data') else None
+                            'start': str(self.test_env.data.index[0]) if hasattr(self.test_env, 'data') else None,
+                            'end': str(self.test_env.data.index[-1]) if hasattr(self.test_env, 'data') else None
                         }
                     },
                 }

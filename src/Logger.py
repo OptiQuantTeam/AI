@@ -163,29 +163,30 @@ class Logger:
         self.logger.error('               테스트 결과')
         self.logger.error('++++++++++++++++++++++++++++++++++++++++++++++++++++++++')
         
+        environment_data = result['environment_data']
+        performance_metrics = result['performance_metrics']
+        trading_statistics = result['trading_statistics']
+        
         # 환경 데이터 출력
         self.logger.error('----- 환경 데이터 -----')
-        self.logger.error(f' 에피소드 보상: {result["environment_data"]["episode_reward"]:.2f}')
-        self.logger.error(f' 최종 잔고: {result["environment_data"]["final_balance"]:.2f}')
-        self.logger.error(f' 초기 잔고: {result["environment_data"]["initial_balance"]:.2f}')
-        self.logger.error(f' 총 스텝 수: {result["environment_data"]["total_steps"]}')
+        self.logger.error(f' 에피소드 보상: {environment_data.get("episode_reward", "N/A"):.2f}')
+        self.logger.error(f' 최종 잔고: {environment_data.get("final_balance", "N/A"):.2f}')
+        self.logger.error(f' 초기 잔고: {environment_data.get("initial_balance", "N/A"):.2f}')
+        self.logger.error(f' 총 스텝 수: {environment_data.get("total_steps", "N/A")}')
         
         # 성능 지표 출력
         self.logger.error('----- 성능 지표 -----')
-        self.logger.error(f' 총 수익: {result["performance_metrics"]["total_profit"]:.2f}')
-        self.logger.error(f' 수익률: {result["performance_metrics"]["profit_rate"]:.2f}%')
-        self.logger.error(f' 수익 거래 수: {result["performance_metrics"]["profitable_trades"]}')
-        self.logger.error(f' 거래당 평균 수익: {result["performance_metrics"]["average_profit_per_trade"]:.2f}')
+        self.logger.error(f' 총 수익: {performance_metrics.get("total_profit", "N/A"):.2f}')
+        self.logger.error(f' 수익률: {performance_metrics.get("profit_rate", "N/A"):.2f}%')
+        self.logger.error(f' 수익 거래 수: {performance_metrics.get("profitable_trades", "N/A")}')
         
         # 거래 통계 출력
         self.logger.error('----- 거래 통계 -----')
-        self.logger.error(f' 롱 포지션: {result["trading_statistics"]["long_positions"]}')
-        self.logger.error(f' 숏 포지션: {result["trading_statistics"]["short_positions"]}')
-        self.logger.error(f' 중립 포지션: {result["trading_statistics"]["neutral_positions"]}')
-        self.logger.error(f' 연속 승리: {result["trading_statistics"]["consecutive_wins"]}')
-        self.logger.error(f' 연속 손실: {result["trading_statistics"]["consecutive_losses"]}')
-        self.logger.error(f' 평균 보유 시간: {result["trading_statistics"]["average_holding_time"]:.2f}')
-        
+        self.logger.error(f' 롱 포지션: {trading_statistics.get("long_positions", "N/A")}')
+        self.logger.error(f' 숏 포지션: {trading_statistics.get("short_positions", "N/A")}')
+        self.logger.error(f' 중립 포지션: {trading_statistics.get("neutral_positions", "N/A")}')
+        self.logger.error(f' 연속 승리: {trading_statistics.get("consecutive_wins", "N/A")}')
+        self.logger.error(f' 연속 손실: {trading_statistics.get("consecutive_losses", "N/A")}')
         self.logger.error('++++++++++++++++++++++++++++++++++++++++++++++++++++++++')
 
     def shutdown(self):
