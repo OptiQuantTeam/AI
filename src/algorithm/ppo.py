@@ -58,15 +58,12 @@ class PPO:
     def select_action(self, state):
         state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
         state_id = state[:, 5:]  # 5번 인덱스부터 마지막까지의 데이터만 사용
-        state_ac = state[:, [11,14,15,16,21,22]]
-        
+        state_ac = state[:, [12,14,15,16,21,22]]
         self.actor_critic.eval()
         
         with torch.no_grad():
-            #print(f'state_ac: {state_ac}')
             value, action_probs, action_logits = self.actor_critic(state_ac)
             pi_I = self.indicator_distribution(state_id)
-            #print(f'action_probs: {action_probs}, pi_I: {pi_I}')
             
             
             

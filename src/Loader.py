@@ -776,7 +776,6 @@ class Loader():
                         'consecutive_losses': self._calculate_consecutive_losses(balance_history)
                     },
     
-                        
                     # 환경 정보
                     'environment_info': {
                         'data_path': self.test_env.path if hasattr(self.test_env, 'path') else None,

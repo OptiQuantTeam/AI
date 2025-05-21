@@ -301,17 +301,20 @@ class FuturesEnv_test(gym.Env):
             self.data.iloc[self.current_step]['ha_body'],
             self.data.iloc[self.current_step]['ha_lower_wick'],
             self.data.iloc[self.current_step]['ha_upper_wick'],
+            self.data.iloc[self.current_step]['ha_signal'],
+
             self.data.iloc[self.current_step]['ema_200'],
             self.data.iloc[self.current_step]['ema_200_signal'],
+            
             self.data.iloc[self.current_step]['stoch_rsi'],
             self.data.iloc[self.current_step]['stoch_signal'],
+            
             self.data.iloc[self.current_step]['bb_middle'],
             self.data.iloc[self.current_step]['bb_std'],
             self.data.iloc[self.current_step]['bb_upper'],
             self.data.iloc[self.current_step]['bb_lower'],
             self.data.iloc[self.current_step]['bb_width'],
-            self.data.iloc[self.current_step]['bb_width_change'],
-            self.data.iloc[self.current_step]['ha_signal']
+            self.data.iloc[self.current_step]['bb_width_change']
 
         ], dtype=np.float32)
         
