@@ -381,11 +381,11 @@ class Loader():
         return ppo_agent, model_info, learning_info
 
     def train(self, **kwargs):
-
-        self.logger.setTrainLevel()
-        self.logger.render_training_start(time=(datetime.datetime.now() + datetime.timedelta(hours=9)).strftime('%Y-%m-%d_%H-%M-%S'))
         # Agent 학습 모드 전환
         self.agent.test_mode = False
+        self.logger.setTrainLevel()
+
+        self.logger.render_training_start(time=(datetime.datetime.now() + datetime.timedelta(hours=9)).strftime('%Y-%m-%d_%H-%M-%S'))
         
         # 학습 진행 상황
         if 'training_state' in self.learning_info:

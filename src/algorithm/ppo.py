@@ -28,7 +28,7 @@ class PPO:
         device="cuda" if torch.cuda.is_available() else "cpu"
     ):
         self.actor_critic = AC.ActorCritic(state_dim, action_dim).to(device)
-        self.indicator_distribution = ID.IndicatorDistribution3(state_dim, action_dim).to(device)
+        self.indicator_distribution = ID.IndicatorDistribution(state_dim, action_dim).to(device)
         
         # 액터 옵티마이저
         self.optimizer = optim.Adam([
@@ -58,7 +58,7 @@ class PPO:
     def select_action(self, state):
         state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
         state_id = state[:, 5:]  # 5번 인덱스부터 마지막까지의 데이터만 사용
-        state_ac = state[:, [12,14,15,16,21,22]]
+        state_ac = state[:, [12,17,18,19,24,26,27,28,29]]
         self.actor_critic.eval()
         
         with torch.no_grad():
@@ -94,7 +94,8 @@ class PPO:
 
                 indicator_idx = torch.argmax(pi_I)
                 indicator = indicator_idx.float() - 1.0
-                
+                #print(f'state_ac: {state_ac}')
+                #print(f'action_probs: {action_probs}, pi_I: {pi_I}')
 
                 if ai != indicator:
                     pi = self.alpha * action_probs + (1 - self.alpha) * pi_I
@@ -156,7 +157,7 @@ class PPO:
         self.actor_critic.train()
         with torch.no_grad():
             next_state_batch_id = next_state_batch[:, 5:]
-            next_state_batch_ac = next_state_batch[:, [11,14,15,16,21,22]]
+            next_state_batch_ac = next_state_batch[:, [12,17,18,19,24,26,27,28,29]]
             next_value = self.actor_critic(next_state_batch_ac)[0]  # value는 첫 번째 반환값
             next_value = next_value.squeeze()
             
@@ -201,7 +202,7 @@ class PPO:
                 # 현재 미니배치
                 state = state_batch[idx]
                 state_id = state[:, 5:]  # 5번 인덱스부터 마지막까지의 데이터만 사용
-                state_ac = state[:, [11,14,15,16,21,22]]
+                state_ac = state[:, [12,17,18,19,24,26,27,28,29]]
                 action = action_batch[idx]
                 advantage = advantages[idx]
                 return_ = returns[idx]

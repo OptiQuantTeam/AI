@@ -112,10 +112,12 @@ class FuturesEnv_train(gym.Env):
         columns = ['Open', 'Close', 'High', 'Low', 'Volume',
                 'ha_close', 'ha_open', 'ha_high', 'ha_low',
                 'ha_body', 'ha_lower_wick', 'ha_upper_wick',
-                'ha_signal', 'ema_200', 'ema_200_signal',
+                'ha_signal', 'ha_high_diff', 'ha_low_diff', 'ha_body_diff',
+                'ema_200', 'ema_200_signal',
                 'stoch_rsi', 'stoch_signal',
-                'bb_middle', 'bb_std', 'bb_upper', 'bb_lower',
-                'bb_width', 'bb_width_change']
+                'bb_middle', 'bb_upper', 'bb_lower',
+                'bb_width', 'bb_width_change',
+                'MACD', 'MACD_Signal', 'Cross Signal', 'Divergence Signal', 'Trade Signal']
         df = df[columns]
 
         # 결측치 처리
@@ -291,6 +293,9 @@ class FuturesEnv_train(gym.Env):
             self.data.iloc[self.current_step]['ha_lower_wick'],
             self.data.iloc[self.current_step]['ha_upper_wick'],
             self.data.iloc[self.current_step]['ha_signal'],
+            self.data.iloc[self.current_step]['ha_high_diff'],
+            self.data.iloc[self.current_step]['ha_low_diff'],
+            self.data.iloc[self.current_step]['ha_body_diff'],
 
             self.data.iloc[self.current_step]['ema_200'],
             self.data.iloc[self.current_step]['ema_200_signal'],
@@ -299,12 +304,16 @@ class FuturesEnv_train(gym.Env):
             self.data.iloc[self.current_step]['stoch_signal'],
             
             self.data.iloc[self.current_step]['bb_middle'],
-            self.data.iloc[self.current_step]['bb_std'],
             self.data.iloc[self.current_step]['bb_upper'],
             self.data.iloc[self.current_step]['bb_lower'],
             self.data.iloc[self.current_step]['bb_width'],
-            self.data.iloc[self.current_step]['bb_width_change']
+            self.data.iloc[self.current_step]['bb_width_change'],
 
+            self.data.iloc[self.current_step]['MACD'],
+            self.data.iloc[self.current_step]['MACD_Signal'],
+            self.data.iloc[self.current_step]['Cross Signal'],
+            self.data.iloc[self.current_step]['Divergence Signal'],
+            self.data.iloc[self.current_step]['Trade Signal']
         ], dtype=np.float32)
         
         return state

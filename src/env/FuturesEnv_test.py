@@ -114,10 +114,12 @@ class FuturesEnv_test(gym.Env):
         columns = ['Open', 'Close', 'High', 'Low', 'Volume',
                 'ha_close', 'ha_open', 'ha_high', 'ha_low',
                 'ha_body', 'ha_lower_wick', 'ha_upper_wick',
-                'ha_signal', 'ema_200', 'ema_200_signal',
+                'ha_signal', 'ha_high_diff', 'ha_low_diff', 'ha_body_diff',
+                'ema_200', 'ema_200_signal',
                 'stoch_rsi', 'stoch_signal',
-                'bb_middle', 'bb_std', 'bb_upper', 'bb_lower',
-                'bb_width', 'bb_width_change']
+                'bb_middle', 'bb_upper', 'bb_lower',
+                'bb_width', 'bb_width_change',
+                'MACD', 'MACD_Signal', 'Cross Signal', 'Divergence Signal', 'Trade Signal']
         df = df[columns]
 
         # 결측치 처리
@@ -302,6 +304,9 @@ class FuturesEnv_test(gym.Env):
             self.data.iloc[self.current_step]['ha_lower_wick'],
             self.data.iloc[self.current_step]['ha_upper_wick'],
             self.data.iloc[self.current_step]['ha_signal'],
+            self.data.iloc[self.current_step]['ha_high_diff'],
+            self.data.iloc[self.current_step]['ha_low_diff'],
+            self.data.iloc[self.current_step]['ha_body_diff'],
 
             self.data.iloc[self.current_step]['ema_200'],
             self.data.iloc[self.current_step]['ema_200_signal'],
@@ -310,11 +315,16 @@ class FuturesEnv_test(gym.Env):
             self.data.iloc[self.current_step]['stoch_signal'],
             
             self.data.iloc[self.current_step]['bb_middle'],
-            self.data.iloc[self.current_step]['bb_std'],
             self.data.iloc[self.current_step]['bb_upper'],
             self.data.iloc[self.current_step]['bb_lower'],
             self.data.iloc[self.current_step]['bb_width'],
-            self.data.iloc[self.current_step]['bb_width_change']
+            self.data.iloc[self.current_step]['bb_width_change'],
+
+            self.data.iloc[self.current_step]['MACD'],
+            self.data.iloc[self.current_step]['MACD_Signal'],
+            self.data.iloc[self.current_step]['Cross Signal'],
+            self.data.iloc[self.current_step]['Divergence Signal'],
+            self.data.iloc[self.current_step]['Trade Signal']
 
         ], dtype=np.float32)
         
@@ -408,7 +418,7 @@ class FuturesEnv_test(gym.Env):
                     if abs(profit_rate) > self.stop_loss_threshold:
                         exit_reward -= 5
                 
-                self.total_trade += 1
+                
             '''
             
             
@@ -424,6 +434,8 @@ class FuturesEnv_test(gym.Env):
                 self.size = position_size
                 self.entry_price = current_price
                 do = position_direction
+                self.total_trade += 1
+            
                 self.logger.render(f"스텝: {self.current_step}, 진입 가격: {self.entry_price:.2f}, 포지션: {self.position}")
                 self.logger.render(f"현재 레버리지: {self.leverage:.1f}x, 포지션 크기: {self.size:.2f}")
                 self.logger.render(f"목표 수익: {self.take_profit_threshold*100:.1f}%, 손실 한도: {self.stop_loss_threshold*100:.1f}%")
@@ -434,7 +446,7 @@ class FuturesEnv_test(gym.Env):
         elif self.position != FLAT:
             # 미실현 손익에 대한 보상
             unrealized_profit = self.position * (current_price - self.entry_price) / self.entry_price
-            position_reward = unrealized_profit * 100
+            position_reward = unrealized_profit * 10
             # 손절매 로직
             if unrealized_profit < -self.stop_loss_threshold:
                 profit = self.position * (current_price - self.entry_price)

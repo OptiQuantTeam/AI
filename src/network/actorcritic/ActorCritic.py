@@ -25,7 +25,6 @@ class ActorCritic(nn.Module):
             nn.Dropout(0.3),
             nn.GELU(),
             nn.Linear(128, 128),
-            nn.Tanh()
         )
         
         self.actor_direction_std = nn.Parameter(torch.zeros(1))
@@ -49,7 +48,6 @@ class ActorCritic(nn.Module):
             nn.Dropout(0.3),
             nn.GELU(),
             nn.Linear(16, action_dim),
-            nn.Tanh()
         )
         
         # 크리틱 네트워크 (가치 함수)
