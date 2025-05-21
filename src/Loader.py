@@ -383,6 +383,7 @@ class Loader():
     def train(self, **kwargs):
         # Agent 학습 모드 전환
         self.agent.test_mode = False
+        self.agent.alpha = 1
         self.logger.setTrainLevel()
 
         self.logger.render_training_start(time=(datetime.datetime.now() + datetime.timedelta(hours=9)).strftime('%Y-%m-%d_%H-%M-%S'))
@@ -666,6 +667,7 @@ class Loader():
     def test(self):
         # Agent 테스트 모드 전환
         self.agent.test_mode = True
+        self.agent.alpha = 0.5
         self.logger.setTestLevel()
         
         try:
