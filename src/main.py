@@ -4,8 +4,8 @@ from Loader import Loader
     포지션 그래프 시작부터 Close Long with Loss 표시되는 버그 수정
 '''
 if __name__ == "__main__":
-    env_path = 'data/preprocess/BTCUSDT/BTCUSDT-30m-HEIKIN_ASHI_200EMA.csv'
-    env_path_test = 'data/preprocess/BTCUSDT/BTCUSDT-30m-HEIKIN_ASHI_200EMA.csv'
+    env_path = 'data/preprocess/BTCUSDT/BTCUSDT-30m-FINAL_2020.csv'
+    env_path_test = 'data/preprocess/BTCUSDT/BTCUSDT-30m-FINAL_TEST_2022.csv'
     
     while True: 
         print('학습 방법을 선택해주세요.')

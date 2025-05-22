@@ -100,17 +100,17 @@ def get_klines(symbol, interval, start_time=None, end_time=None, limit=None):
 #23년 6월 1일 오전 9시의 타임스탬프
 #timestamp = 1732792920000
 if __name__ == '__main__':
-    year = 2017
+    year = 2024
     cnt = 0
 
-    while year < 2024:
+    while year == 2024:
         date_string = str(year)+'-01-01 00:00:00'
         timestamp = int(time.mktime(datetime.strptime(date_string, '%Y-%m-%d %H:%M:%S').timetuple())*1000)
         date_string2 = str(year)+'-12-31 23:59:59'
         timestamp2 = int(time.mktime(datetime.strptime(date_string2, '%Y-%m-%d %H:%M:%S').timetuple())*1000)
 
-        df = get_klines("BTCUSDT", "15m", start_time=timestamp, end_time=timestamp2, limit=1000)
+        df = get_klines("BTCUSDT", "30m", start_time=timestamp, end_time=timestamp2, limit=1000)
         # 디렉토리가 없으면 생성
         os.makedirs("/workspace/data/raw/BTCUSDT", exist_ok=True)
-        df.to_csv(f"/workspace/data/raw/BTCUSDT/BTCUSDT-15m-test-{year}.csv")
+        df.to_csv(f"/workspace/data/raw/BTCUSDT/BTCUSDT-30m-{year}.csv")
         year+=1

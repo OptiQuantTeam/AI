@@ -3,6 +3,7 @@ from enum import Enum
 import os
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
+
 class LogLevel(Enum):
     DEBUG = logging.DEBUG
     INFO = logging.INFO
@@ -16,7 +17,7 @@ class Logger:
         self.log_file_path = log_file_path
         
         # 로거 설정
-        self.logger = logging.getLogger(f"{model_name}")
+        self.logger = logging.getLogger(f"system")
         self.logger.setLevel(min(console_level.value, file_level.value))
         
         # 파일 핸들러 설정
@@ -48,6 +49,18 @@ class Logger:
         # 로그 중복 방지
         self.logger.propagate = False
 
+    def setTestLevel(self):
+        """테스트 모드에서 로그 레벨을 INFO로 설정"""
+        self.logger.setLevel(LogLevel.INFO.value)
+        self.file_handler.setLevel(LogLevel.INFO.value)
+        self.console_handler.setLevel(LogLevel.INFO.value)
+
+    def setTrainLevel(self):
+        """학습 모드에서 로그 레벨을 WARNING로 설정"""
+        self.logger.setLevel(LogLevel.WARNING.value)
+        self.file_handler.setLevel(LogLevel.WARNING.value)
+        self.console_handler.setLevel(LogLevel.WARNING.value)
+
     def debug(self, message):
         self.logger.debug(message)
 
@@ -60,6 +73,8 @@ class Logger:
     def warning(self, message):
         self.logger.warning(message)
 
+    def basic(self, message):
+        self.logger.warning(message)
     def render_model_info(self, model_info):
         self.logger.error("########################################################")
         self.logger.error("========== 모델 정보 ==========")
@@ -103,7 +118,7 @@ class Logger:
         self.logger.info(message)
 
     def render_episode_end(self, success_episodes_rate):
-        self.logger.error(f'에피소드 성공률: {success_episodes_rate*100:.2f}%')
+        #self.logger.error(f'에피소드 성공률: {success_episodes_rate*100:.2f}%')
         self.logger.error('========================================================')
 
     def render_training_result(self, result):
@@ -132,3 +147,51 @@ class Logger:
 
     def render_step_state(self, state):
         self.logger.debug(state)
+
+    def render_test_start(self, time):
+        self.logger.error('++++++++++++++++++++++++++++++++++++++++++++++++++++++++')
+        self.logger.error(f'               테스트 시작 {time}')
+        self.logger.error('++++++++++++++++++++++++++++++++++++++++++++++++++++++++')
+
+    def render_test_end(self, time):
+        self.logger.error('++++++++++++++++++++++++++++++++++++++++++++++++++++++++')
+        self.logger.error(f'               테스트 종료 {time}')
+        self.logger.error('++++++++++++++++++++++++++++++++++++++++++++++++++++++++')
+
+    def render_test_result(self, result):
+        self.logger.error('++++++++++++++++++++++++++++++++++++++++++++++++++++++++')
+        self.logger.error('               테스트 결과')
+        self.logger.error('++++++++++++++++++++++++++++++++++++++++++++++++++++++++')
+        
+        environment_data = result['environment_data']
+        performance_metrics = result['performance_metrics']
+        trading_statistics = result['trading_statistics']
+        
+        # 환경 데이터 출력
+        self.logger.error('----- 환경 데이터 -----')
+        self.logger.error(f' 에피소드 보상: {environment_data.get("episode_reward", "N/A"):.2f}')
+        self.logger.error(f' 최종 잔고: {environment_data.get("final_balance", "N/A"):.2f}')
+        self.logger.error(f' 초기 잔고: {environment_data.get("initial_balance", "N/A"):.2f}')
+        self.logger.error(f' 총 스텝 수: {environment_data.get("total_steps", "N/A")}')
+        
+        # 성능 지표 출력
+        self.logger.error('----- 성능 지표 -----')
+        self.logger.error(f' 총 수익: {performance_metrics.get("total_profit", "N/A"):.2f}')
+        self.logger.error(f' 수익률: {performance_metrics.get("profit_rate", "N/A"):.2f}%')
+        self.logger.error(f' 수익 거래 수: {performance_metrics.get("profitable_trades", "N/A")}')
+        
+        # 거래 통계 출력
+        self.logger.error('----- 거래 통계 -----')
+        self.logger.error(f' 롱 포지션: {trading_statistics.get("long_positions", "N/A")}')
+        self.logger.error(f' 숏 포지션: {trading_statistics.get("short_positions", "N/A")}')
+        self.logger.error(f' 중립 포지션: {trading_statistics.get("neutral_positions", "N/A")}')
+        self.logger.error(f' 연속 승리: {trading_statistics.get("consecutive_wins", "N/A")}')
+        self.logger.error(f' 연속 손실: {trading_statistics.get("consecutive_losses", "N/A")}')
+        self.logger.error('++++++++++++++++++++++++++++++++++++++++++++++++++++++++')
+
+    def shutdown(self):
+        """로거를 종료하고 모든 핸들러를 제거합니다."""
+        for handler in self.logger.handlers[:]:
+            handler.close()
+            self.logger.removeHandler(handler)
+        logging.shutdown()

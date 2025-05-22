@@ -105,8 +105,59 @@ def create_technical_indicators(ticker='BTCUSDT', interval='1d'):
 
 def create_technical_indicators2(ticker='BTCUSDT', interval='1d'):
     data = pd.DataFrame()
-    year=2023
+    year=2017
     while year <= 2023:
+        path = f'/workspace/data/raw/{ticker}/{ticker}-{interval}-{year}.csv'
+        df = pd.read_csv(path, index_col=0)
+        data = pd.concat([data, df])
+        year += 1
+
+    """기술적 지표 생성"""
+    EMA_4 = indicator.EMA(data, window=8)
+    EMA_12 = indicator.EMA(data, window=24)
+    EMA_24 = indicator.EMA(data, window=48)
+    data['EMA_4_slope'] = EMA_4['Normalized_Slope']
+    data['EMA_12_slope'] = EMA_12['Normalized_Slope']
+    data['EMA_24_slope'] = EMA_24['Normalized_Slope']
+
+    data['stochRSI'] = indicator.StochasticRSI(data)
+    
+    # MACD
+    MACD = indicator.MACD(data, cross=False)
+    data['MACD'] = MACD['Histogram']
+    data['MACD_Signal'] = MACD['Signal Line']
+    data['Cross Signal'] = MACD['Cross Signal']
+    data['Divergence Signal'] = MACD['Divergence Signal']
+    data['Trade Signal'] = MACD['Trade Signal']
+    
+    # 볼린저 밴드
+    bollinger_bands = indicator.Bollinger(data, window=20, num_std_dev=2)
+    data['bb_width'] = bollinger_bands['Band Width']
+    data['bb_width_change'] = bollinger_bands['Band Width Change']
+
+
+
+    # 가격 변화율 추가 (로그 수익률 사용)
+    data['price_change'] = indicator.PriceChange(data)
+
+    # 필요한 컬럼만 선택
+    data = data[['Open', 'Close', 'High', 'Low', 'Volume',
+                'EMA_4_slope', 'EMA_12_slope', 'EMA_24_slope',
+                'stochRSI', 'MACD', 'MACD_Signal',
+                'Cross Signal', 'Divergence Signal', 'Trade Signal',
+                'bb_width', 'bb_width_change',
+                'price_change']]
+    
+    # NaN 값 제거
+    data = data.dropna()
+    
+    data.to_csv(f'/workspace/data/preprocess/{ticker}/{ticker}-{interval}-technical4.csv')
+    return True
+
+def create_technical_indicators3(ticker='BTCUSDT', interval='1d'):
+    data = pd.DataFrame()
+    year=2022
+    while year <= 2022:
         path = f'/workspace/data/raw/{ticker}/{ticker}-{interval}-{year}.csv'
         df = pd.read_csv(path, index_col=0)
         data = pd.concat([data, df])
@@ -133,8 +184,13 @@ def create_technical_indicators2(ticker='BTCUSDT', interval='1d'):
              (data['ha_upper_wick'] < 1e-6) & 
              (data['ha_body'] > 0.5), 'ha_signal'] = -1
 
+
+    data['ha_high_diff'] = data['ha_high'] - data['ha_high'].shift(1)
+    data['ha_low_diff'] = data['ha_low'] - data['ha_low'].shift(1)
+    data['ha_body_diff'] = data['ha_body'] - data['ha_body'].shift(1)
+
     """200 EMA 계산"""
-    data['ema_200'] = data['Close'].ewm(span=19200).mean()    # 15분봉 기준 200일 
+    data['ema_200'] = data['Close'].ewm(span=9600).mean()    # 30분봉 기준 200일 (200 * 48)
     data['ema_200_signal'] = 0
     data.loc[data['Close'] > data['ema_200'], 'ema_200_signal'] = 1
     data.loc[data['Close'] < data['ema_200'], 'ema_200_signal'] = -1
@@ -157,28 +213,38 @@ def create_technical_indicators2(ticker='BTCUSDT', interval='1d'):
     data.loc[data['stoch_rsi'] > 0.8, 'stoch_signal'] = 1   # 과매수
 
     """볼린저 밴드 계산"""
-    data['bb_middle'] = data['Close'].rolling(window=20).mean()
-    data['bb_std'] = data['Close'].rolling(window=20).std()
-    data['bb_upper'] = data['bb_middle'] + 2 * data['bb_std']
-    data['bb_lower'] = data['bb_middle'] - 2 * data['bb_std']
-    data['bb_width'] = (data['bb_upper'] - data['bb_lower']) / data['bb_middle']
-    data['bb_width_change'] = data['bb_width'].diff()
+    bollinger_bands = indicator.Bollinger(data, window=20, num_std_dev=2)
+    data['bb_middle'] = bollinger_bands['bb_middle']
+    data['bb_upper'] = bollinger_bands['bb_upper']
+    data['bb_lower'] = bollinger_bands['bb_lower']
+    data['bb_width'] = bollinger_bands['bb_width']
+    data['bb_width_change'] = bollinger_bands['bb_width_change']
+
+    # MACD
+    MACD = indicator.MACD(data, cross=False)
+    data['MACD'] = MACD['Histogram']
+    data['MACD_Signal'] = MACD['Signal Line']
+    data['Cross Signal'] = MACD['Cross Signal']
+    data['Divergence Signal'] = MACD['Divergence Signal']
+    data['Trade Signal'] = MACD['Trade Signal']
 
     # 필요한 컬럼만 선택
     data = data[['Open', 'Close', 'High', 'Low', 'Volume',
                 'ha_close', 'ha_open', 'ha_high', 'ha_low',
                 'ha_body', 'ha_lower_wick', 'ha_upper_wick',
-                'ha_signal', 'ema_200', 'ema_200_signal',
+                'ha_signal', 'ha_high_diff', 'ha_low_diff', 'ha_body_diff',
+                'ema_200', 'ema_200_signal',
                 'stoch_rsi', 'stoch_signal',
-                'bb_middle', 'bb_std', 'bb_upper', 'bb_lower',
-                'bb_width', 'bb_width_change']]
+                'bb_middle', 'bb_upper', 'bb_lower', 'bb_width', 'bb_width_change',
+                'MACD', 'MACD_Signal', 'Cross Signal', 'Divergence Signal', 'Trade Signal']]
     
     # NaN 값 제거
     data = data.dropna()
     
-    data.to_csv(f'/workspace/data/preprocess/{ticker}/{ticker}-{interval}-HEIKIN_ASHI_200EMA_test.csv')
+    data.to_csv(f'/workspace/data/preprocess/{ticker}/{ticker}-{interval}-FINAL_TEST_2022.csv')
     return True
 
+
 if __name__ == '__main__':
-    #preprocess_historical(interval='15m')
-    create_technical_indicators2(interval='15m')
+    #preprocess_historical(interval='30m')
+    create_technical_indicators3(interval='30m')

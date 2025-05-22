@@ -3,9 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
-class IndicatorDistribution(nn.Module):
+class IndicatorDistribution3(nn.Module):
     def __init__(self, state_dim, action_dim):
-        super(IndicatorDistribution, self).__init__()
+        super(IndicatorDistribution3, self).__init__()
         self.state_dim = state_dim
         self.action_dim = action_dim
         
