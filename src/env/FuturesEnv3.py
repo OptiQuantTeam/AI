@@ -386,9 +386,9 @@ class FuturesEnv3(gym.Env):
         # LONG 포지션인 경우
         elif self.position == LONG:
             if action == SHORT:  # SHORT 또는 HOLD 액션으로 청산
-                profit = self.size * (current_price - self.entry_price)
+                profit = (current_price - self.entry_price)
                 profit_rate = profit / self.entry_price
-                self.balance += profit
+                self.balance += profit * self.size
                 exit_cost = self.size * current_price * self.trade_fee
                 self.balance -= exit_cost
                 reward = 1 if profit > 0 else -1
@@ -400,18 +400,19 @@ class FuturesEnv3(gym.Env):
                 self.logger.render(f"LONG 청산 - 가격: {current_price:.2f}, {'수익' if profit > 0 else '손실'}: {profit:.2f}")
                 self.position = None
                 self.size = 1e-6
+                self._adjust_leverage(profit_rate)
             elif action == HOLD:
-                unrealized_profit = self.size * (current_price - self.entry_price)
+                unrealized_profit = (current_price - self.entry_price)
                 unrealized_profit_rate = unrealized_profit / self.entry_price
-                reward = 0.5 if unrealized_profit > 0 else -0.5
-                do = self.position * 2
+                reward = 0.5 if unrealized_profit_rate > 0 else -0.5
+                
         
         # SHORT 포지션인 경우
         elif self.position == SHORT:
             if action == LONG:  # LONG 또는 HOLD 액션으로 청산
-                profit = self.size * (self.entry_price - current_price)
+                profit = (self.entry_price - current_price)
                 profit_rate = profit / self.entry_price
-                self.balance += profit
+                self.balance += profit * self.size
                 exit_cost = self.size * current_price * self.trade_fee
                 self.balance -= exit_cost
                 reward = 1 if profit > 0 else -1
@@ -423,11 +424,12 @@ class FuturesEnv3(gym.Env):
                 self.logger.render(f"SHORT 청산 - 가격: {current_price:.2f}, {'수익' if profit > 0 else '손실'}: {profit:.2f}")
                 self.position = None
                 self.size = 1e-6
+                self._adjust_leverage(profit_rate)
             elif action == HOLD:
-                unrealized_profit = self.size * (self.entry_price - current_price)
+                unrealized_profit = (self.entry_price - current_price)
                 unrealized_profit_rate = unrealized_profit / self.entry_price
-                reward = 0.5 if unrealized_profit > 0 else -0.5
-                
+                reward = 0.5 if unrealized_profit_rate > 0 else -0.5
+        
         self.balance_profit_rate = (self.balance - self.initial_balance) / self.initial_balance 
         # 히스토리 기록
         self.price_history.append(current_price)

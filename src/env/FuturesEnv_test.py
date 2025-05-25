@@ -462,7 +462,8 @@ class FuturesEnv_test(gym.Env):
                 action_reward += -5  # 손절매 실행에 대한 보상 (리스크 관리)
                 self.logger.render(f"스텝: {self.current_step}, 손절 가격: {current_price:.2f}, 포지션: {self.position}")
                 self.logger.render(f"수익: {profit:.2f}, 수익률: {profit_rate*100:.2f}%")
-            
+                self._adjust_leverage(profit_rate)
+
             elif unrealized_profit > self.take_profit_threshold:
                 profit = self.position * (current_price - self.entry_price)
                 self.balance += profit * self.size
@@ -477,7 +478,8 @@ class FuturesEnv_test(gym.Env):
                 self.success += 1
                 self.logger.render(f"스텝: {self.current_step}, 익절 가격: {current_price:.2f}, 포지션: {self.position}")
                 self.logger.render(f"수익: {profit:.2f}, 수익률: {profit_rate*100:.2f}%")
-
+                self._adjust_leverage(profit_rate)
+                
         # 자산 30% 이하로 떨어지면 종료
         if self.balance < self.initial_balance * 0.3:
             done = True
