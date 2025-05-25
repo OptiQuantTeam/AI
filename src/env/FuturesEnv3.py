@@ -400,7 +400,11 @@ class FuturesEnv3(gym.Env):
                 self.logger.render(f"LONG 청산 - 가격: {current_price:.2f}, {'수익' if profit > 0 else '손실'}: {profit:.2f}")
                 self.position = None
                 self.size = 1e-6
- 
+            elif action == HOLD:
+                unrealized_profit = self.size * (current_price - self.entry_price)
+                unrealized_profit_rate = unrealized_profit / self.entry_price
+                reward = 0.5 if unrealized_profit > 0 else -0.5
+                do = self.position * 2
         
         # SHORT 포지션인 경우
         elif self.position == SHORT:
@@ -419,8 +423,11 @@ class FuturesEnv3(gym.Env):
                 self.logger.render(f"SHORT 청산 - 가격: {current_price:.2f}, {'수익' if profit > 0 else '손실'}: {profit:.2f}")
                 self.position = None
                 self.size = 1e-6
-
-
+            elif action == HOLD:
+                unrealized_profit = self.size * (self.entry_price - current_price)
+                unrealized_profit_rate = unrealized_profit / self.entry_price
+                reward = 0.5 if unrealized_profit > 0 else -0.5
+                
         self.balance_profit_rate = (self.balance - self.initial_balance) / self.initial_balance 
         # 히스토리 기록
         self.price_history.append(current_price)
@@ -439,7 +446,7 @@ class FuturesEnv3(gym.Env):
             final_profit_rate = (self.balance - self.initial_balance) / self.initial_balance
             
             # 학습 종료 시 다음 학습 step 여부 결정
-            if final_profit_rate > 0.01:
+            if final_profit_rate > 0:
                 self.success_episodes += 1
 
         info = {
