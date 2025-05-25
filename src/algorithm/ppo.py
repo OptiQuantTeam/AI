@@ -93,6 +93,7 @@ class PPO:
                 # epsilon 값 감소
                 self.current_epsilon = max(self.epsilon_end, self.current_epsilon * self.epsilon_decay)
             else:
+                print(f'action_probs: {action_probs}')
                 # 테스트 모드에서는 가장 높은 확률을 가진 액션 선택
                 ai_idx = torch.argmax(action_probs)
                 ai = ai_idx.float() - 1.0
@@ -394,31 +395,57 @@ class PPO:
         
         # 1. Entropy Loss 라인 차트
         ax1 = fig.add_subplot(gs[0, 0])
-        ax1.plot(self.episode_entropy_losses, color='green', alpha=0.5)
+        ax1.plot(self.episode_entropy_losses, color='green', alpha=0.5, label='Entropy Loss')
+        # 추세선 추가
+        window_size = 100
+        if len(self.episode_entropy_losses) >= window_size:
+            rolling_mean = np.convolve(self.episode_entropy_losses, np.ones(window_size)/window_size, mode='valid')
+            x = np.arange(window_size-1, len(self.episode_entropy_losses))
+            ax1.plot(x, rolling_mean, color='darkgreen', linewidth=2, label='Entropy Loss Trend')
         ax1.set_title('Entropy Loss')
         ax1.set_xlabel('Step')
         ax1.set_ylabel('Loss')
+        ax1.legend()
         
         # 2. Total Loss 라인 차트
         ax2 = fig.add_subplot(gs[0, 1])
-        ax2.plot(self.episode_total_losses, color='purple', alpha=0.5)
+        ax2.plot(self.episode_total_losses, color='purple', alpha=0.5, label='Total Loss')
+        # 추세선 추가
+        if len(self.episode_total_losses) >= window_size:
+            rolling_mean = np.convolve(self.episode_total_losses, np.ones(window_size)/window_size, mode='valid')
+            x = np.arange(window_size-1, len(self.episode_total_losses))
+            ax2.plot(x, rolling_mean, color='darkviolet', linewidth=2, label='Total Loss Trend')
         ax2.set_title('Total Loss')
         ax2.set_xlabel('Step')
         ax2.set_ylabel('Loss')
+        ax2.legend()
         
         # 3. Policy Loss 라인 차트
         ax3 = fig.add_subplot(gs[1, :])
-        ax3.plot(self.episode_actor_losses, color='blue', alpha=0.5)
+        ax3.plot(self.episode_actor_losses, color='blue', alpha=0.5, label='Policy Loss')
+        # 추세선 추가
+        window_size = 100
+        if len(self.episode_actor_losses) >= window_size:
+            rolling_mean = np.convolve(self.episode_actor_losses, np.ones(window_size)/window_size, mode='valid')
+            x = np.arange(window_size-1, len(self.episode_actor_losses))
+            ax3.plot(x, rolling_mean, color='darkblue', linewidth=2, label='Policy Loss Trend')
         ax3.set_title('Policy Loss')
         ax3.set_xlabel('Step')
         ax3.set_ylabel('Loss')
+        ax3.legend()
         
         # 4. Value Loss 라인 차트
         ax4 = fig.add_subplot(gs[2, :])
-        ax4.plot(self.episode_critic_losses, color='red', alpha=0.5)
+        ax4.plot(self.episode_critic_losses, color='red', alpha=0.5, label='Value Loss')
+        # 추세선 추가
+        if len(self.episode_critic_losses) >= window_size:
+            rolling_mean = np.convolve(self.episode_critic_losses, np.ones(window_size)/window_size, mode='valid')
+            x = np.arange(window_size-1, len(self.episode_critic_losses))
+            ax4.plot(x, rolling_mean, color='darkred', linewidth=2, label='Value Loss Trend')
         ax4.set_title('Value Loss')
         ax4.set_xlabel('Step')
         ax4.set_ylabel('Loss')
+        ax4.legend()
         
         plt.tight_layout()
         plt.savefig(path)

@@ -419,12 +419,22 @@ class Loader():
                 actions = []
                 episode_reward = 0                
                 update_count = 0
-
+                long_count = 0
+                short_count = 0
+                neutral_count = 0
                 state = self.env.reset()
                 
                 while True:
                     self.env.num += 1
                     action, value, log_prob = self.agent.select_action(state)
+                    
+                    if action == 1:
+                        long_count += 1
+                    elif action == -1:
+                        short_count += 1
+                    else:
+                        neutral_count += 1
+
                     next_state, reward, done, info = self.env.step(action)
                     
                     actions.append(info['position'])
@@ -445,7 +455,9 @@ class Loader():
                         #update_count += 0 if info['liquidated'] else self.agent.update()
                         break
 
+                total_count = long_count + short_count + neutral_count
                 self.logger.basic(f"  반복한 step: {self.env.num}, 에피소드 보상: {episode_reward:.2f}, 업데이트 횟수: {update_count}")
+                self.logger.basic(f"  롱 포지션: {long_count/total_count*100:.2f}%, 숏 포지션: {short_count/total_count*100:.2f}%, 중립 포지션: {neutral_count/total_count*100:.2f}%")
                 self.env.render()
                 self.logger.render_episode_end(sum(episode_results) / len(episode_results))
                 
@@ -459,7 +471,7 @@ class Loader():
                 total_trades = profit_count + loss_count
                 win_rate = profit_count / total_trades if total_trades > 0 else 0
                 episode_win_rate.append(win_rate)
-
+                
                 # 학습 진행 상황 평가 및 시각화 (50 에피소드마다)
                 if (episode + 1) % 50 == 0:
                     # 학습 진행 상황 평가 및 시각화

@@ -352,10 +352,13 @@ class FuturesEnv3(gym.Env):
         '''
 
         current_price = self.data.iloc[self.current_step]['Close']
+        done = self.current_step >= len(self.data) - 1
         reward = 0
-        done = False
         do = 0
-
+        
+        if self.num > 30 * 24 * 2:
+            done = True
+            
         # 포지션이 없는 경우
         if self.position is None:
             if action == LONG:
@@ -439,17 +442,20 @@ class FuturesEnv3(gym.Env):
         self.balance_history.append(self.balance)
         self.reward_history.append(reward)
         self.profit_rate_history.append(profit_rate * 100 if 'profit_rate' in locals() else 0)
-        self.current_step += 1
         self.step_count += 1
 
-        if self.num > 30 * 24 * 2:
-            done = True
+        
+            
+        
+        if done:
             # 최종 수익률에 따른 보상
             final_profit_rate = (self.balance - self.initial_balance) / self.initial_balance
             
             # 학습 종료 시 다음 학습 step 여부 결정
             if final_profit_rate > 0:
                 self.success_episodes += 1
+        else:
+            self.current_step += 1
 
         info = {
             'liquidated': self.liquidated,
