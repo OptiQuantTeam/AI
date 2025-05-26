@@ -1,2 +1,2 @@
 from .ActorCritic import ActorCritic
-from .ActorCritic2 import ActorCritic2
+from .ActorCritic_Linear import ActorCritic

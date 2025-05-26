@@ -1,10 +1,18 @@
 import pandas as pd
+import numpy as np
 
-def PriceChange(data):
-    chg = data['Close']/data['Open']
-    chg = pd.DataFrame({'CHG':round((chg-1)*100, 2)}, index=data.index)
+def sigmoid(x):
+    """Apply sigmoid function to normalize values to 0-1 range"""
+    return 1 / (1 + np.exp(-x))
 
-    return chg
+def PriceChange(data, period=1):
+    # Calculate price change
+    price_change = data['Close'].pct_change(periods=period)
+    
+    # Normalize using sigmoid function and scale to 0-100
+    normalized_change = sigmoid(price_change) * 100
+    
+    return normalized_change.iloc[-1]
 
 # 예제 데이터 사용
 if __name__ == "__main__":

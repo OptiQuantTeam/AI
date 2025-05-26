@@ -19,28 +19,21 @@ class ActorCritic(nn.Module):
         # 공통 특징 추출 레이어 - 단순화된 구조
         self.feature_extraction = nn.Sequential(
             nn.Linear(state_dim, 32),
-            nn.LeakyReLU(0.2),
+            nn.ReLU(),
             nn.Linear(32, 16),
-            nn.LeakyReLU(0.2)
+            nn.ReLU()
         )
         
         # 액터 네트워크 (정책) - 포지션 방향
         self.actor_direction = nn.Sequential(
-            nn.Linear(32, 16),
-            nn.LeakyReLU(0.2),
             nn.Linear(16, action_dim)
         )
         
         # 액터의 표준편차 파라미터
-        self.actor_direction_std = nn.Parameter(torch.ones(1) * 3.0)  # 더 큰 초기값
-        
-        # Temperature 파라미터 추가 (클리핑 적용)
-        self.temperature = nn.Parameter(torch.ones(1) * 1.0)  # 초기값 1.0으로 설정
+        self.actor_direction_std = nn.Parameter(torch.ones(1) * 2.0)  # 더 큰 초기값
         
         # 크리틱 네트워크 (가치 함수)
         self.critic = nn.Sequential(
-            nn.Linear(32, 16),
-            nn.LeakyReLU(0.2),
             nn.Linear(16, 1)
         )
         
@@ -54,9 +47,8 @@ class ActorCritic(nn.Module):
         # 액터: 행동 분포
         action_logits = self.actor_direction(features)
         
-        # Temperature scaling 적용
-        scaled_logits = action_logits / self.temperature
-        action_probs = F.softmax(scaled_logits, dim=-1)
+        # 직접적인 softmax 적용
+        action_probs = F.softmax(action_logits, dim=-1)
         
         # 크리틱: 상태 가치
         value = self.critic(features)

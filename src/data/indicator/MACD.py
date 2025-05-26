@@ -1,9 +1,6 @@
 import pandas as pd
 import numpy as np
 
-def sigmoid(x):
-    return 1 / (1 + np.exp(-x))
-
 def MACD(data, short_window=12, long_window=26, signal_window=9, cross=True, divergence_lookback=20):
     # 짧은 기간과 긴 기간의 지수 이동 평균 계산
     ema_short = data['Close'].ewm(span=short_window, adjust=False).mean()
@@ -17,10 +14,6 @@ def MACD(data, short_window=12, long_window=26, signal_window=9, cross=True, div
     
     # Histogram 계산
     macd_histogram = round(macd_line - signal_line, 2)
-    
-    # MACD 정규화 (0-100)
-    normalized_macd = sigmoid(macd_histogram) * 100
-    normalized_signal = sigmoid(signal_line) * 100
     
     # Cross Signal 계산 (상향 돌파: 1, 하향 돌파: -1, 그 외: 0)
     cross_signal = np.zeros(len(data))
@@ -74,24 +67,25 @@ def MACD(data, short_window=12, long_window=26, signal_window=9, cross=True, div
             if price_trend > 0 and macd_trend < 0:
                 divergence_signal[i] = -1
     
-    # 히스토그램 매매 신호 생성 (정규화된 값 기준: 50이 중간값)
+    # 히스토그램 매매 신호 생성
     trade_signal = np.zeros(len(data))
     
     for i in range(1, len(data)):
-        # 히스토그램이 50선을 상향 돌파
-        if normalized_macd[i] > 50 and normalized_macd[i-1] <= 50:
+        # 히스토그램이 0선을 상향 돌파
+        if macd_histogram.iloc[i] > 0 and macd_histogram.iloc[i-1] <= 0:
             trade_signal[i] = 1
-        # 히스토그램이 50선을 하향 돌파
-        elif normalized_macd[i] < 50 and normalized_macd[i-1] >= 50:
+        # 히스토그램이 0선을 하향 돌파
+        elif macd_histogram.iloc[i] < 0 and macd_histogram.iloc[i-1] >= 0:
             trade_signal[i] = -1
     
     # 결과 반환
     if cross:
-        return normalized_macd
+        return macd_histogram
     else:
         return pd.DataFrame({
-            'MACD': normalized_macd,
-            'MACD_Signal': normalized_signal,
+            'MACD Line': macd_line,
+            'Signal Line': signal_line,
+            'Histogram': macd_histogram,
             'Cross Signal': cross_signal,
             'Divergence Signal': divergence_signal,
             'Trade Signal': trade_signal

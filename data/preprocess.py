@@ -31,10 +31,16 @@ def create_technical_indicators(ticker='BTCUSDT', interval='1d'):
         year += 1
 
     """기술적 지표 생성"""
-    # 이동평균
-    data['sma_5'] = data['Close'].rolling(window=5).mean()
-    data['sma_20'] = data['Close'].rolling(window=20).mean()
-    data['sma_60'] = data['Close'].rolling(window=60).mean()
+    # EMA - 정규화된 값 사용
+    EMA_5 = indicator.EMA(data, window=5)
+    EMA_20 = indicator.EMA(data, window=20)
+    EMA_60 = indicator.EMA(data, window=60)
+    data['ema_5'] = EMA_5['Normalized_EMA']  # 정규화된 EMA 값 (0-100)
+    data['ema_5_slope'] = EMA_5['Normalized_Slope']  # 정규화된 기울기 (0-100)
+    data['ema_20'] = EMA_20['Normalized_EMA']
+    data['ema_20_slope'] = EMA_20['Normalized_Slope']
+    data['ema_60'] = EMA_60['Normalized_EMA']
+    data['ema_60_slope'] = EMA_60['Normalized_Slope']
     
     # RSI
     delta = data['Close'].diff()
@@ -43,17 +49,20 @@ def create_technical_indicators(ticker='BTCUSDT', interval='1d'):
     rs = gain / loss
     data['RSI'] = 100 - (100 / (1 + rs))
     
-    # MACD
-    exp1 = data['Close'].ewm(span=12, adjust=False).mean()
-    exp2 = data['Close'].ewm(span=26, adjust=False).mean()
-    data['MACD'] = exp1 - exp2
-    data['MACD_Signal'] = data['MACD'].ewm(span=9, adjust=False).mean()
+    # MACD - 정규화된 값 사용
+    MACD_result = indicator.MACD(data, cross=False)
+    data['MACD'] = MACD_result['MACD']  # 정규화된 MACD 값 (0-100)
+    data['MACD_Signal'] = MACD_result['MACD_Signal']  # 정규화된 Signal Line 값 (0-100)
+    data['Cross Signal'] = MACD_result['Cross Signal']  # 1: 상향돌파, -1: 하향돌파, 0: 그 외
+    data['Divergence Signal'] = MACD_result['Divergence Signal']  # 1: 상승다이버전스, -1: 하락다이버전스, 0: 그 외
+    data['Trade Signal'] = MACD_result['Trade Signal']  # 1: 매수신호, -1: 매도신호, 0: 그 외
     
-    # 볼린저 밴드
-    data['bb_middle'] = data['Close'].rolling(window=20).mean()
-    data['bb_std'] = data['Close'].rolling(window=20).std()
-    data['bb_upper'] = data['bb_middle'] + 2 * data['bb_std']
-    data['bb_lower'] = data['bb_middle'] - 2 * data['bb_std']
+    # 볼린저 밴드 - 정규화된 값 사용
+    bollinger_bands = indicator.Bollinger(data, window=20, num_std_dev=2)
+    data['bb_width'] = bollinger_bands['Band Width']  # 정규화된 밴드 폭 (0-100)
+    data['bb_width_change'] = bollinger_bands['Band Width Change']  # 정규화된 밴드 폭 변화 (0-100)
+    data['bb_overbought'] = bollinger_bands['Overbought Signal']  # 1: 과매수, 0: 그 외
+    data['bb_oversold'] = bollinger_bands['Oversold Signal']  # 1: 과매도, 0: 그 외
 
     """변동성 지표 생성"""
     # 변동성 계산
@@ -80,17 +89,18 @@ def create_technical_indicators(ticker='BTCUSDT', interval='1d'):
         log_returns = np.log(data['Close'] / data['Close'].shift(1))
         data[f'volatility_{tf}'] = log_returns.rolling(window=timeframes[tf]).std()
         
-        # 거래량 이동평균
-        data[f'volume_{tf}'] = data['Volume'].rolling(window=timeframes[tf]).mean()
+        # 거래량 이동평균 - 정규화된 값 사용
+        data[f'volume_{tf}'] = indicator.VMA(data, period=timeframes[tf])  # 정규화된 VMA 값 (0-100)
 
     # 가격 변화율 추가 (로그 수익률 사용)
     data['price_change'] = np.log(data['Close'] / data['Close'].shift(1))
 
     # 필요한 컬럼만 선택
     data = data[['Open', 'Close', 'High', 'Low', 'Volume',
-                'sma_5', 'sma_20', 'sma_60',
+                'ema_5', 'ema_5_slope', 'ema_20', 'ema_20_slope', 'ema_60', 'ema_60_slope',
                 'RSI', 'MACD', 'MACD_Signal',
-                'bb_middle', 'bb_std', 'bb_upper', 'bb_lower',
+                'Cross Signal', 'Divergence Signal', 'Trade Signal',
+                'bb_width', 'bb_width_change', 'bb_overbought', 'bb_oversold',
                 'volatility', 'volatility_ma', 'volatility_std',
                 'close_short', 'volatility_short', 'volume_short',
                 'close_medium', 'volatility_medium',
@@ -113,40 +123,47 @@ def create_technical_indicators2(ticker='BTCUSDT', interval='1d'):
         year += 1
 
     """기술적 지표 생성"""
+    # EMA - 정규화된 값 사용
     EMA_4 = indicator.EMA(data, window=8)
     EMA_12 = indicator.EMA(data, window=24)
     EMA_24 = indicator.EMA(data, window=48)
-    data['EMA_4_slope'] = EMA_4['Normalized_Slope']
+    data['EMA_4'] = EMA_4['Normalized_EMA']  # 정규화된 EMA 값 (0-100)
+    data['EMA_4_slope'] = EMA_4['Normalized_Slope']  # 정규화된 기울기 (0-100)
+    data['EMA_12'] = EMA_12['Normalized_EMA']
     data['EMA_12_slope'] = EMA_12['Normalized_Slope']
+    data['EMA_24'] = EMA_24['Normalized_EMA']
     data['EMA_24_slope'] = EMA_24['Normalized_Slope']
 
     data['stochRSI'] = indicator.StochasticRSI(data)
     
-    # MACD
-    MACD = indicator.MACD(data, cross=False)
-    data['MACD'] = MACD['Histogram']
-    data['MACD_Signal'] = MACD['Signal Line']
-    data['Cross Signal'] = MACD['Cross Signal']
-    data['Divergence Signal'] = MACD['Divergence Signal']
-    data['Trade Signal'] = MACD['Trade Signal']
+    # MACD - 정규화된 값 사용
+    MACD_result = indicator.MACD(data, cross=False)
+    data['MACD'] = MACD_result['MACD']  # 정규화된 MACD 값 (0-100)
+    data['MACD_Signal'] = MACD_result['MACD_Signal']  # 정규화된 Signal Line 값 (0-100)
+    data['Cross Signal'] = MACD_result['Cross Signal']  # 1: 상향돌파, -1: 하향돌파, 0: 그 외
+    data['Divergence Signal'] = MACD_result['Divergence Signal']  # 1: 상승다이버전스, -1: 하락다이버전스, 0: 그 외
+    data['Trade Signal'] = MACD_result['Trade Signal']  # 1: 매수신호, -1: 매도신호, 0: 그 외
     
-    # 볼린저 밴드
+    # 볼린저 밴드 - 정규화된 값 사용
     bollinger_bands = indicator.Bollinger(data, window=20, num_std_dev=2)
-    data['bb_width'] = bollinger_bands['Band Width']
-    data['bb_width_change'] = bollinger_bands['Band Width Change']
+    data['bb_width'] = bollinger_bands['Band Width']  # 정규화된 밴드 폭 (0-100)
+    data['bb_width_change'] = bollinger_bands['Band Width Change']  # 정규화된 밴드 폭 변화 (0-100)
+    data['bb_overbought'] = bollinger_bands['Overbought Signal']  # 1: 과매수, 0: 그 외
+    data['bb_oversold'] = bollinger_bands['Oversold Signal']  # 1: 과매도, 0: 그 외
 
-
+    # 거래량 이동평균 - 정규화된 값 사용
+    data['volume_ma'] = indicator.VMA(data, period=20)  # 정규화된 VMA 값 (0-100)
 
     # 가격 변화율 추가 (로그 수익률 사용)
     data['price_change'] = indicator.PriceChange(data)
 
     # 필요한 컬럼만 선택
     data = data[['Open', 'Close', 'High', 'Low', 'Volume',
-                'EMA_4_slope', 'EMA_12_slope', 'EMA_24_slope',
+                'EMA_4', 'EMA_4_slope', 'EMA_12', 'EMA_12_slope', 'EMA_24', 'EMA_24_slope',
                 'stochRSI', 'MACD', 'MACD_Signal',
                 'Cross Signal', 'Divergence Signal', 'Trade Signal',
-                'bb_width', 'bb_width_change',
-                'price_change']]
+                'bb_width', 'bb_width_change', 'bb_overbought', 'bb_oversold',
+                'volume_ma', 'price_change']]
     
     # NaN 값 제거
     data = data.dropna()
@@ -156,7 +173,7 @@ def create_technical_indicators2(ticker='BTCUSDT', interval='1d'):
 
 def create_technical_indicators3(ticker='BTCUSDT', interval='1d'):
     data = pd.DataFrame()
-    year=2017
+    year=2020
     while year <= 2023:
         path = f'/workspace/data/raw/{ticker}-{interval}-{year}.csv'
         df = pd.read_csv(path, index_col=0)
@@ -184,8 +201,14 @@ def create_technical_indicators3(ticker='BTCUSDT', interval='1d'):
              (data['ha_upper_wick'] < 1e-6) & 
              (data['ha_body'] > 0.5), 'ha_signal'] = -1
 
+    data['ha_high_diff'] = data['ha_high'] - data['ha_high'].shift(1)
+    data['ha_low_diff'] = data['ha_low'] - data['ha_low'].shift(1)
+    data['ha_body_diff'] = data['ha_body'] - data['ha_body'].shift(1)
+
     """200 EMA 계산"""
-    data['ema_200'] = data['Close'].ewm(span=9600).mean()    # 30분봉 기준 200일 (200 * 48)
+    EMA_200 = indicator.EMA(data, window=9600)  # 30분봉 기준 200일 (200 * 48)
+    data['ema_200'] = EMA_200['Normalized_EMA']  # 정규화된 EMA 값 (0-100)
+    data['ema_200_slope'] = EMA_200['Normalized_Slope']  # 정규화된 기울기 (0-100)
     data['ema_200_signal'] = 0
     data.loc[data['Close'] > data['ema_200'], 'ema_200_signal'] = 1
     data.loc[data['Close'] < data['ema_200'], 'ema_200_signal'] = -1
@@ -208,26 +231,38 @@ def create_technical_indicators3(ticker='BTCUSDT', interval='1d'):
     data.loc[data['stoch_rsi'] > 0.8, 'stoch_signal'] = 1   # 과매수
 
     """볼린저 밴드 계산"""
-    data['bb_middle'] = data['Close'].rolling(window=20).mean()
-    data['bb_std'] = data['Close'].rolling(window=20).std()
-    data['bb_upper'] = data['bb_middle'] + 2 * data['bb_std']
-    data['bb_lower'] = data['bb_middle'] - 2 * data['bb_std']
-    data['bb_width'] = (data['bb_upper'] - data['bb_lower']) / data['bb_middle']
-    data['bb_width_change'] = data['bb_width'].diff()
+    bollinger_bands = indicator.Bollinger(data, window=20, num_std_dev=2)
+    data['bb_width'] = bollinger_bands['Band Width']  # 정규화된 밴드 폭 (0-100)
+    data['bb_width_change'] = bollinger_bands['Band Width Change']  # 정규화된 밴드 폭 변화 (0-100)
+    data['bb_overbought'] = bollinger_bands['Overbought Signal']  # 1: 과매수, 0: 그 외
+    data['bb_oversold'] = bollinger_bands['Oversold Signal']  # 1: 과매도, 0: 그 외
+
+    # MACD
+    MACD = indicator.MACD(data, cross=False)
+    data['MACD'] = MACD['MACD']  # 정규화된 MACD 값 (0-100)
+    data['MACD_Signal'] = MACD['MACD_Signal']  # 정규화된 Signal Line 값 (0-100)
+    data['Cross Signal'] = MACD['Cross Signal']  # 1: 상향돌파, -1: 하향돌파, 0: 그 외
+    data['Divergence Signal'] = MACD['Divergence Signal']  # 1: 상승다이버전스, -1: 하락다이버전스, 0: 그 외
+    data['Trade Signal'] = MACD['Trade Signal']  # 1: 매수신호, -1: 매도신호, 0: 그 외
+
+    # 거래량 이동평균 - 정규화된 값 사용
+    data['volume_ma'] = indicator.VMA(data, period=20)  # 정규화된 VMA 값 (0-100)
 
     # 필요한 컬럼만 선택
     data = data[['Open', 'Close', 'High', 'Low', 'Volume',
                 'ha_close', 'ha_open', 'ha_high', 'ha_low',
                 'ha_body', 'ha_lower_wick', 'ha_upper_wick',
-                'ha_signal', 'ema_200', 'ema_200_signal',
+                'ha_signal', 'ha_high_diff', 'ha_low_diff', 'ha_body_diff',
+                'ema_200', 'ema_200_slope', 'ema_200_signal',
                 'stoch_rsi', 'stoch_signal',
-                'bb_middle', 'bb_std', 'bb_upper', 'bb_lower',
-                'bb_width', 'bb_width_change']]
+                'bb_width', 'bb_width_change', 'bb_overbought', 'bb_oversold',
+                'MACD', 'MACD_Signal', 'Cross Signal', 'Divergence Signal', 'Trade Signal',
+                'volume_ma']]
     
     # NaN 값 제거
     data = data.dropna()
     
-    data.to_csv(f'/workspace/data/preprocess/{ticker}/{ticker}-{interval}-HEIKIN_ASHI_200EMA.csv')
+    data.to_csv(f'/workspace/data/preprocess/{ticker}/{ticker}-{interval}-FINAL_NEW_2020.csv')
     return True
 
 

@@ -14,7 +14,7 @@ BUY = 1
 SELL = -1
 HOLD = 0
 
-class FuturesEnv(gym.Env):
+class FuturesEnv_test(gym.Env):
     def __init__(self, path=None, logger=None):
         '''
         환경의 초기 설정값
@@ -49,11 +49,11 @@ class FuturesEnv(gym.Env):
         self.leverage = self.initial_leverage  # 현재 레버리지
         self.min_leverage = 1.0  # 최소 레버리지
         self.max_leverage = 8.0  # 최대 레버리지
-        self.leverage_step = 2  # 레버리지 조정 단위
+        self.leverage_step = 1  # 레버리지 조정 단위
         self.trade_fee = 0.0002
         self.max_steps = 2100
         self.min_steps = 2048  # PPO 배치 사이즈를 고려한 최소 스텝 수
-        self.profit_target = 0.1  # 10% 수익 목표
+        self.profit_target = 0.02  # 2% 수익 목표
         self.max_position_ratio = 1  # 최대 포지션 크기 비율 감소
         self.stop_loss_threshold = 0.02  # 손절매 임계값 감소
         self.take_profit_threshold = 0.02  # 익절매 임계값 감소
@@ -68,7 +68,7 @@ class FuturesEnv(gym.Env):
             1.0: 0.01,  # 1.4배 레버리지일 때 7%
         }
         
-        self.leverage_profit_limits= {
+        self.leverage_profit_limits = {
             8.0: 0.08,  # 2배 레버리지일 때 10%
             4.0: 0.06,  # 1.8배 레버리지일 때 9%
             2.0: 0.04,  # 1.6배 레버리지일 때 8%
@@ -89,16 +89,15 @@ class FuturesEnv(gym.Env):
         self.observation_space = spaces.Box(
             low=-np.inf, 
             high=np.inf, 
-            shape=(
-                
-                
-                8,),  # 상태 공간 확장
+            shape=(8,),  # 상태 공간 확장
             dtype=np.float32
         )
         self.action_space = spaces.Discrete(3, start=-1)
 
         self.success_episodes = 0
         self.last_step = 100
+
+        
 
     def _load_data(self):
         '''
@@ -165,7 +164,7 @@ class FuturesEnv(gym.Env):
         # 해당 레버리지에 맞는 수익 한도 설정
         self.take_profit_threshold = self.leverage_profit_limits[closest_leverage]
         #self.logger.render(f"현재 레버리지: {self.leverage:.1f}x, 수익 한도: {self.profit_target*100:.1f}%")
-    
+
     def _adjust_leverage(self, profit_rate):
         '''
         수익률에 따라 레버리지를 조정하는 함수
@@ -178,7 +177,7 @@ class FuturesEnv(gym.Env):
             
             # 연속 손실에 따라 레버리지 감소
             if self.consecutive_losses >= 1:
-                self.leverage = max(self.min_leverage, self.leverage // self.leverage_step)
+                self.leverage = max(self.min_leverage, self.leverage - self.leverage_step)
                 self._adjust_loss_limit()  # 레버리지 변경 시 손실 한도 재조정
                 self._adjust_profit_limit()  # 레버리지 변경 시 수익 한도 재조정
                 #self.logger.render(f"연속 손실로 레버리지 감소: {self.leverage:.2f}")
@@ -188,7 +187,7 @@ class FuturesEnv(gym.Env):
             
             # 연속 수익에 따라 레버리지 증가
             if self.consecutive_wins >= 2:
-                self.leverage = min(self.max_leverage, self.leverage * self.leverage_step)
+                self.leverage = min(self.max_leverage, self.leverage + self.leverage_step)
                 self._adjust_loss_limit()  # 레버리지 변경 시 손실 한도 재조정
                 self._adjust_profit_limit()  # 레버리지 변경 시 수익 한도 재조정
                 #self.logger.render(f"연속 수익으로 레버리지 증가: {self.leverage:.2f}")
@@ -239,13 +238,10 @@ class FuturesEnv(gym.Env):
         '''
 
         
-        if self.recurrence % 2 == 0:
-            self.current_step = np.random.randint(36, len(self.data) - self.max_steps)
-            self.recurrence += 1
-        else:
-            self.current_step = self.tmp_current
-            self.recurrence += 1
+        self.current_step = 0
+        
         '''
+
         self.current_step = self.last_step + 1
         if self.current_step >= len(self.data) - self.max_steps:
             self.current_step = 100
@@ -279,7 +275,7 @@ class FuturesEnv(gym.Env):
         self.balance_history = []
         self.profit_history = []
         self.profit_rate_history = []
-        
+       
         self.logger.basic(f"학습 시작 위치: {self.current_step} (전체 데이터 중 {self.current_step/len(self.data)*100:.2f}%)")
         
         return self._next_observation()
@@ -312,21 +308,18 @@ class FuturesEnv(gym.Env):
             self.data.iloc[self.current_step]['ha_low_diff'],
             self.data.iloc[self.current_step]['ha_body_diff'],
 
-            # 16
             self.data.iloc[self.current_step]['ema_200'],
             self.data.iloc[self.current_step]['ema_200_signal'],
             
             self.data.iloc[self.current_step]['stoch_rsi'],
             self.data.iloc[self.current_step]['stoch_signal'],
             
-            # 20
             self.data.iloc[self.current_step]['bb_middle'],
             self.data.iloc[self.current_step]['bb_upper'],
             self.data.iloc[self.current_step]['bb_lower'],
             self.data.iloc[self.current_step]['bb_width'],
             self.data.iloc[self.current_step]['bb_width_change'],
 
-            # 25
             self.data.iloc[self.current_step]['MACD'],
             self.data.iloc[self.current_step]['MACD_Signal'],
             self.data.iloc[self.current_step]['Cross Signal'],
@@ -363,24 +356,15 @@ class FuturesEnv(gym.Env):
         immediate_reward = 0
         action_reward = 0
         position_reward = 0
-        
-        # 1. 행동에 대한 즉각적인 보상
-        if action == LONG:
-            action_reward -= 0.1  # LONG 진입 시도에 대한 작은 보상
-        elif action == SHORT:
-            action_reward -= 0.1  # SHORT 진입 시도에 대한 작은 보상
-        else:
-            action_reward += 0.1  # HOLD에 대한 작은 보상
-            
-        # 학습 시간 설정
-        if self.num > 30 * 24 * 2:
-            done = True
+
+       
             
         # 수익 목표 달성 시 추가 보상
         if self.balance > self.initial_balance * (1 + self.profit_target):
             immediate_reward += 0.5
             self.clear = True
-            
+        
+        
         # 행동에 따른 포지션 방향 결정
         if action == LONG:
             if self.position == LONG:
@@ -399,16 +383,23 @@ class FuturesEnv(gym.Env):
         else:
             position_direction = self.position
 
+         # 1. 행동에 대한 즉각적인 보상
+        if position_direction == LONG:
+            action_reward -= 0.1  # LONG 진입 시도에 대한 작은 보상
+        elif position_direction == SHORT:
+            action_reward -= 0.1  # SHORT 진입 시도에 대한 작은 보상
+        else:
+            action_reward += 0.1  # HOLD에 대한 작은 보상
+
         # 포지션 변경 시
         if self.position != position_direction:
-            # 기존 포지션 청산
             '''
+            # 기존 포지션 청산
             if self.position != FLAT:
                 profit = self.position * (current_price - self.entry_price)
                 exit_cost = current_price * self.trade_fee
                 self.balance += (profit - exit_cost) * self.size
                 self.size = 1e-6
-                do = self.position * 2
                 self.position = FLAT
 
                 profit_rate = profit / self.entry_price
@@ -426,12 +417,13 @@ class FuturesEnv(gym.Env):
                     self.failure += 1
                     if abs(profit_rate) > self.stop_loss_threshold:
                         exit_reward -= 5
-            '''
                 
+                
+            '''
             
-
+            
             # 새로운 포지션 진입
-            if position_direction != FLAT and not done and self.size == 1e-6:
+            if position_direction != FLAT and not done:
                 # 레버리지에 따른 포지션 비중 조절
                 trade_ratio = self._get_position_ratio()
                 available_balance = self.balance * (1 - self.trade_fee * self.leverage)
@@ -443,7 +435,7 @@ class FuturesEnv(gym.Env):
                 self.entry_price = current_price
                 do = position_direction
                 self.total_trade += 1
-                
+            
                 self.logger.render(f"스텝: {self.current_step}, 진입 가격: {self.entry_price:.2f}, 포지션: {self.position}")
                 self.logger.render(f"현재 레버리지: {self.leverage:.1f}x, 포지션 크기: {self.size:.2f}")
                 self.logger.render(f"목표 수익: {self.take_profit_threshold*100:.1f}%, 손실 한도: {self.stop_loss_threshold*100:.1f}%")
@@ -455,7 +447,6 @@ class FuturesEnv(gym.Env):
             # 미실현 손익에 대한 보상
             unrealized_profit = self.position * (current_price - self.entry_price) / self.entry_price
             position_reward = unrealized_profit * 10
-
             # 손절매 로직
             if unrealized_profit < -self.stop_loss_threshold:
                 profit = self.position * (current_price - self.entry_price)
@@ -469,9 +460,9 @@ class FuturesEnv(gym.Env):
                 profit_rate = profit / self.entry_price
                 exit_reward = (profit - exit_cost) / self.entry_price * 100
                 action_reward += -5  # 손절매 실행에 대한 보상 (리스크 관리)
-                self.failure += 1
                 self.logger.render(f"스텝: {self.current_step}, 손절 가격: {current_price:.2f}, 포지션: {self.position}")
                 self.logger.render(f"수익: {profit:.2f}, 수익률: {profit_rate*100:.2f}%")
+                self._adjust_leverage(profit_rate)
 
             elif unrealized_profit > self.take_profit_threshold:
                 profit = self.position * (current_price - self.entry_price)
@@ -487,6 +478,11 @@ class FuturesEnv(gym.Env):
                 self.success += 1
                 self.logger.render(f"스텝: {self.current_step}, 익절 가격: {current_price:.2f}, 포지션: {self.position}")
                 self.logger.render(f"수익: {profit:.2f}, 수익률: {profit_rate*100:.2f}%")
+                self._adjust_leverage(profit_rate)
+                
+        # 자산 30% 이하로 떨어지면 종료
+        if self.balance < self.initial_balance * 0.3:
+            done = True
 
         # 최종 보상 계산 (즉각적인 보상 + 청산 보상)
         total_reward = action_reward + (exit_reward if 'exit_reward' in locals() else position_reward)
@@ -549,11 +545,10 @@ class FuturesEnv(gym.Env):
         if self.logger is None:
             return
         
-        # Render the environment to the screen                
+        # Render the environment to the screen    
         profit = float(self.balance - self.initial_balance)
         profit_rate = float((self.balance - self.initial_balance) * 100 / self.initial_balance)
         self.logger.basic(f'학습 마지막 위치: {self.current_step}')
         self.logger.basic(f'Balance: {float(self.balance):.2f}')
         self.logger.basic(f'Profit: {float(profit):.2f}, Profit Rate: {float(profit_rate):.2f}%')
-        self.logger.basic(f'Success: {self.success}, Failure: {self.failure}')
-        self.logger.basic(f'해당 에피소드 거래 횟수: {self.total_trade}, 누적 에피소드 성공 횟수: {self.success_episodes}')
+        self.logger.basic(f'Success: {self.success}/{self.total_trade}')

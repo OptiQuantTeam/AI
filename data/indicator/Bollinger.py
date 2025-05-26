@@ -1,4 +1,13 @@
 import pandas as pd
+import numpy as np
+
+def normalize_to_100(x, min_val=None, max_val=None):
+    """Normalize values to 0-100 range using Min-Max normalization"""
+    if min_val is None:
+        min_val = x.min()
+    if max_val is None:
+        max_val = x.max()
+    return ((x - min_val) / (max_val - min_val)) * 100
 
 def Bollinger(data, window=20, num_std_dev=2):
     # 이동 평균 계산 (중앙 밴드)
@@ -14,17 +23,23 @@ def Bollinger(data, window=20, num_std_dev=2):
     # 밴드 폭 계산
     band_width = (upper_band - lower_band) / middle_band
     
-    # 밴드 폭 변화율 계산
-    band_width_change = band_width.pct_change() * 100
+    # Calculate band width change
+    band_width_change = band_width.diff()
     
-    # 결과 반환
-    return pd.DataFrame({
-        'Middle Band': middle_band,
-        'Upper Band': upper_band,
-        'Lower Band': lower_band,
-        'Band Width': band_width,
-        'Band Width Change': band_width_change
-    }, index=data.index)
+    # Normalize values to 0-100 range
+    normalized_width = normalize_to_100(band_width)
+    normalized_change = normalize_to_100(band_width_change)
+    
+    # Generate signals
+    overbought_signal = (data['Close'] > upper_band).astype(int)
+    oversold_signal = (data['Close'] < lower_band).astype(int)
+    
+    return {
+        'Band Width': normalized_width,
+        'Band Width Change': normalized_change,
+        'Overbought Signal': overbought_signal,
+        'Oversold Signal': oversold_signal
+    }
 
 # 예제 데이터 사용
 if __name__ == "__main__":
