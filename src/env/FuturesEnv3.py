@@ -411,8 +411,7 @@ class FuturesEnv3(gym.Env):
             elif action == FLAT or action == LONG:
                 unrealized_profit = (current_price - self.entry_price)
                 unrealized_profit_rate = unrealized_profit / self.entry_price
-                reward = -0.2
-                
+                reward = -0.1
         
         # SHORT 포지션인 경우
         elif self.position == SHORT:
@@ -435,7 +434,7 @@ class FuturesEnv3(gym.Env):
             elif action == FLAT or action == SHORT:
                 unrealized_profit = (self.entry_price - current_price)
                 unrealized_profit_rate = unrealized_profit / self.entry_price
-                reward = -0.2
+                reward = -0.1
         else:
             reward = 0.2
 
@@ -473,7 +472,7 @@ class FuturesEnv3(gym.Env):
             'clear': self.clear,
             'balance': self.balance,
             'profit_rate': float((self.balance - self.initial_balance) * 100 / self.initial_balance),
-            'trade_success': 0,
+            'trade_success': self.success,
             'position': do,
         }
 

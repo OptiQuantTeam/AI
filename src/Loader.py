@@ -12,7 +12,7 @@ import glob
 
 class Loader():
     def __init__(self, env_path, env_path_test, further=None, auto=False):
-        self.env = env.FuturesEnv3(path=env_path)
+        self.env = env.FuturesEnv4(path=env_path)
         self.test_env = env.FuturesEnv_test(path=env_path_test)
 
         if auto:

@@ -76,7 +76,7 @@ class PPO:
     def select_action(self, state):
         state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
         state_id = state[:, 5:]  # 5번 인덱스부터 마지막까지의 데이터만 사용
-        state_ac = state[:, [1,4,12,16,17,18,19,24,25,26,29]]
+        state_ac = state[:, [0,4,12,16,17,18,19,24,25,26,29]]
         
         self.actor_critic.eval()
         with torch.no_grad():
@@ -150,7 +150,7 @@ class PPO:
         self.actor_critic.train()
         with torch.no_grad():
             next_state_batch_id = next_state_batch[:, 5:]
-            next_state_batch_ac = next_state_batch[:, [1,4,12,16,17,18,19,24,25,26,29]]
+            next_state_batch_ac = next_state_batch[:, [0,4,12,16,17,18,19,24,25,26,29]]
             next_value, _, _ = self.actor_critic(next_state_batch_ac)
             next_value = next_value.squeeze()
             
@@ -199,7 +199,7 @@ class PPO:
                     
                 state = state_batch[idx]
                 state_id = state[:, 5:]
-                state_ac = state[:, [1,4,12,16,17,18,19,24,25,26,29]]
+                state_ac = state[:, [0,4,12,16,17,18,19,24,25,26,29]]
                 action = action_batch[idx]
                 advantage = advantages[idx]
                 return_ = returns[idx]
@@ -233,8 +233,8 @@ class PPO:
                     self.epsilon
                 )
                 
-                value_loss1 = F.mse_loss(value, return_)
-                value_loss2 = F.mse_loss(value_clipped, return_)
+                value_loss1 = F.smooth_l1_loss(value, return_)
+                value_loss2 = F.smooth_l1_loss(value_clipped, return_)
                 critic_loss = torch.max(value_loss1, value_loss2)
                 
                 # 5. 엔트로피 손실
