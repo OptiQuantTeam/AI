@@ -75,6 +75,7 @@ class Logger:
 
     def basic(self, message):
         self.logger.warning(message)
+        
     def render_model_info(self, model_info):
         self.logger.error("########################################################")
         self.logger.error("========== 모델 정보 ==========")

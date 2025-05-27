@@ -12,7 +12,7 @@ import glob
 
 class Loader():
     def __init__(self, env_path, env_path_test, further=None, auto=False):
-        self.env = env.FuturesEnv(path=env_path)
+        self.env = env.FuturesEnv3(path=env_path)
         self.test_env = env.FuturesEnv_test(path=env_path_test)
 
         if auto:
@@ -381,11 +381,12 @@ class Loader():
         return ppo_agent, model_info, learning_info
 
     def train(self, **kwargs):
-
-        self.logger.setTrainLevel()
-        self.logger.render_training_start(time=(datetime.datetime.now() + datetime.timedelta(hours=9)).strftime('%Y-%m-%d_%H-%M-%S'))
         # Agent 학습 모드 전환
         self.agent.test_mode = False
+        self.agent.alpha = 1
+        self.logger.setTrainLevel()
+
+        self.logger.render_training_start(time=(datetime.datetime.now() + datetime.timedelta(hours=9)).strftime('%Y-%m-%d_%H-%M-%S'))
         
         # 학습 진행 상황
         if 'training_state' in self.learning_info:
@@ -418,12 +419,22 @@ class Loader():
                 actions = []
                 episode_reward = 0                
                 update_count = 0
-
+                long_count = 0
+                short_count = 0
+                neutral_count = 0
                 state = self.env.reset()
                 
                 while True:
                     self.env.num += 1
                     action, value, log_prob = self.agent.select_action(state)
+                    
+                    if action == 1:
+                        long_count += 1
+                    elif action == -1:
+                        short_count += 1
+                    else:
+                        neutral_count += 1
+
                     next_state, reward, done, info = self.env.step(action)
                     
                     actions.append(info['position'])
@@ -441,10 +452,12 @@ class Loader():
                     if done:
                         profit_rate_history.append(info['profit_rate'])
                         episode_results.append(1 if self.env.balance > self.env.initial_balance * 1.01 else 0)
-                        update_count += 0 if info['liquidated'] else self.agent.update()
+                        #update_count += 0 if info['liquidated'] else self.agent.update()
                         break
 
-                self.logger.render(f"  반복한 step: {self.env.num}, 에피소드 보상: {episode_reward:.2f}, 업데이트 횟수: {update_count}")
+                total_count = long_count + short_count + neutral_count
+                self.logger.basic(f"  반복한 step: {self.env.num}, 에피소드 보상: {episode_reward:.2f}, 업데이트 횟수: {update_count}")
+                self.logger.basic(f"  롱 포지션: {long_count/total_count*100:.2f}%, 숏 포지션: {short_count/total_count*100:.2f}%, 중립 포지션: {neutral_count/total_count*100:.2f}%")
                 self.env.render()
                 self.logger.render_episode_end(sum(episode_results) / len(episode_results))
                 
@@ -458,9 +471,9 @@ class Loader():
                 total_trades = profit_count + loss_count
                 win_rate = profit_count / total_trades if total_trades > 0 else 0
                 episode_win_rate.append(win_rate)
-
+                
                 # 학습 진행 상황 평가 및 시각화 (50 에피소드마다)
-                if (episode + 1) % 1 == 0:
+                if (episode + 1) % 50 == 0:
                     # 학습 진행 상황 평가 및 시각화
                     os.makedirs(f'results/{self.agent.model_name}/learning', exist_ok=True)
                     os.makedirs(f'results/{self.agent.model_name}/performance', exist_ok=True)
@@ -666,6 +679,7 @@ class Loader():
     def test(self):
         # Agent 테스트 모드 전환
         self.agent.test_mode = True
+        self.agent.alpha = 1
         self.logger.setTestLevel()
         
         try:
@@ -790,8 +804,26 @@ class Loader():
 
                 os.makedirs('json', exist_ok=True)
                 os.makedirs(f'json/{self.agent.model_name}', exist_ok=True)
+                # NumPy 타입을 Python 기본 타입으로 변환
+                def convert_to_serializable(obj):
+                    if isinstance(obj, (np.ndarray, np.number)):
+                        if isinstance(obj, np.integer):
+                            return int(obj)
+                        elif isinstance(obj, np.floating):
+                            return float(obj)
+                        else:
+                            return obj.tolist()
+                    elif isinstance(obj, dict):
+                        return {k: convert_to_serializable(v) for k, v in obj.items()}
+                    elif isinstance(obj, list):
+                        return [convert_to_serializable(item) for item in obj]
+                    return obj
+
+                metadata = convert_to_serializable(metadata)
                 
-                with open(f'json/{self.agent.model_name}/{self.agent.model_name}_metadata_{time}.json', 'w') as f:
+                metadata_path = f'json/{self.agent.model_name}/{self.agent.model_name}_metadata_{time}.json'
+                
+                with open(metadata_path, 'w', encoding='utf-8') as f:
                     json.dump(metadata, f, indent=4)
 
                 self.logger.render(f" <체크포인트가 저장되었습니다: {time}>")

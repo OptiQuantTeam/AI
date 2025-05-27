@@ -14,7 +14,7 @@ BUY = 1
 SELL = -1
 HOLD = 0
 
-class FuturesEnv(gym.Env):
+class FuturesEnv2(gym.Env):
     def __init__(self, path=None, logger=None):
         '''
         환경의 초기 설정값
@@ -89,10 +89,7 @@ class FuturesEnv(gym.Env):
         self.observation_space = spaces.Box(
             low=-np.inf, 
             high=np.inf, 
-            shape=(
-                
-                
-                8,),  # 상태 공간 확장
+            shape=(8,),  # 상태 공간 확장
             dtype=np.float32
         )
         self.action_space = spaces.Discrete(3, start=-1)
@@ -360,26 +357,21 @@ class FuturesEnv(gym.Env):
         do = 0      # 거래 행동을 기록하기 위한 변수
         
         # 보상 초기화
-        immediate_reward = 0
         action_reward = 0
         position_reward = 0
+        exit_reward = 0
         
         # 1. 행동에 대한 즉각적인 보상
         if action == LONG:
-            action_reward -= 0.1  # LONG 진입 시도에 대한 작은 보상
+            action_reward -= 1  # LONG 진입 시도에 대한 작은 보상
         elif action == SHORT:
-            action_reward -= 0.1  # SHORT 진입 시도에 대한 작은 보상
+            action_reward -= 1  # SHORT 진입 시도에 대한 작은 보상
         else:
-            action_reward += 0.1  # HOLD에 대한 작은 보상
+            action_reward -= 1  # HOLD에 대한 작은 보상
             
         # 학습 시간 설정
         if self.num > 30 * 24 * 2:
             done = True
-            
-        # 수익 목표 달성 시 추가 보상
-        if self.balance > self.initial_balance * (1 + self.profit_target):
-            immediate_reward += 0.5
-            self.clear = True
             
         # 행동에 따른 포지션 방향 결정
         if action == LONG:
@@ -401,32 +393,7 @@ class FuturesEnv(gym.Env):
 
         # 포지션 변경 시
         if self.position != position_direction:
-            # 기존 포지션 청산
-            '''
-            if self.position != FLAT:
-                profit = self.position * (current_price - self.entry_price)
-                exit_cost = current_price * self.trade_fee
-                self.balance += (profit - exit_cost) * self.size
-                self.size = 1e-6
-                do = self.position * 2
-                self.position = FLAT
 
-                profit_rate = profit / self.entry_price
-                
-                self._adjust_leverage(profit_rate)
-                
-                # 포지션 정리 보상 계리 (과거 행동에 대한 보상)
-                exit_reward = (profit - exit_cost) / self.entry_price * 10
-                
-                if profit_rate > 0.01:
-                    self.success += 1
-                    trade_success = True
-                    exit_reward += 1.0
-                else:
-                    self.failure += 1
-                    if abs(profit_rate) > self.stop_loss_threshold:
-                        exit_reward -= 5
-            '''
                 
             
 
@@ -450,13 +417,13 @@ class FuturesEnv(gym.Env):
 
             self.balance_profit_rate = (self.balance - self.initial_balance) / self.initial_balance 
 
-        # 포지션 유지 중일 때 손절매 로직 체크
+        # 포지션 유지 중일 때 손절매/익절매 로직 체크
         elif self.position != FLAT:
-            # 미실현 손익에 대한 보상
+            # 미실현 손익에 대한 보상 (방향성만 고려)
             unrealized_profit = self.position * (current_price - self.entry_price) / self.entry_price
-            position_reward = unrealized_profit * 10
+            position_reward = 0.5 if unrealized_profit > 0 else -0.5  # 미실현 손익의 방향성에 대한 작은 보상
 
-            # 손절매 로직
+            # 손절매/익절매 로직
             if unrealized_profit < -self.stop_loss_threshold:
                 profit = self.position * (current_price - self.entry_price)
                 self.balance += profit * self.size
@@ -467,9 +434,8 @@ class FuturesEnv(gym.Env):
                 self.position = FLAT
                 #position_direction = FLAT
                 profit_rate = profit / self.entry_price
-                exit_reward = (profit - exit_cost) / self.entry_price * 100
+                
                 action_reward += -5  # 손절매 실행에 대한 보상 (리스크 관리)
-                self.failure += 1
                 self.logger.render(f"스텝: {self.current_step}, 손절 가격: {current_price:.2f}, 포지션: {self.position}")
                 self.logger.render(f"수익: {profit:.2f}, 수익률: {profit_rate*100:.2f}%")
 
@@ -482,14 +448,14 @@ class FuturesEnv(gym.Env):
                 do = self.position * 2
                 self.position = FLAT
                 profit_rate = profit / self.entry_price
-                exit_reward = (profit - exit_cost) / self.entry_price * 100
+                
                 action_reward += 5  # 익절매 실행에 대한 보상 (리스크 관리)
                 self.success += 1
                 self.logger.render(f"스텝: {self.current_step}, 익절 가격: {current_price:.2f}, 포지션: {self.position}")
                 self.logger.render(f"수익: {profit:.2f}, 수익률: {profit_rate*100:.2f}%")
 
         # 최종 보상 계산 (즉각적인 보상 + 청산 보상)
-        total_reward = action_reward + (exit_reward if 'exit_reward' in locals() else position_reward)
+        total_reward = action_reward + position_reward
         
         # 히스토리 기록
         self.price_history.append(current_price)
@@ -555,5 +521,4 @@ class FuturesEnv(gym.Env):
         self.logger.basic(f'학습 마지막 위치: {self.current_step}')
         self.logger.basic(f'Balance: {float(self.balance):.2f}')
         self.logger.basic(f'Profit: {float(profit):.2f}, Profit Rate: {float(profit_rate):.2f}%')
-        self.logger.basic(f'Success: {self.success}, Failure: {self.failure}')
         self.logger.basic(f'해당 에피소드 거래 횟수: {self.total_trade}, 누적 에피소드 성공 횟수: {self.success_episodes}')
