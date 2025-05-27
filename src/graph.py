@@ -396,10 +396,23 @@ def plot_learning_progress(episode_win_rate, profit_rate_history, episode_reward
     axes[1, 0].grid(True)
     '''
 
-    axes[1, 0].plot(episode_win_rate)
-    axes[1, 0].set_title(f'Episode win rate')
+    # 에피소드 승률 그래프
+    x = np.arange(len(episode_win_rate))
+    axes[1, 0].plot(x, episode_win_rate, color='blue', alpha=0.7, label='Win Rate')
+    
+    # 추세선 추가
+    z = np.polyfit(x, episode_win_rate, 1)
+    p = np.poly1d(z)
+    axes[1, 0].plot(x, p(x), color='red', linestyle='--', alpha=0.8, label='Trend Line')
+    
+    # 추세선의 기울기 계산
+    slope = z[0]
+    trend_direction = "Up" if slope > 0 else "Down"
+    
+    axes[1, 0].set_title(f'Episode Win Rate (Trend: {trend_direction}, Slope: {slope:.4f})')
     axes[1, 0].set_xlabel('Episode')
     axes[1, 0].set_ylabel('Win Rate')
+    axes[1, 0].legend()
     axes[1, 0].grid(True)
     
     # 4. 보상 변화 그래프

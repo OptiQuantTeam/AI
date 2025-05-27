@@ -125,25 +125,23 @@ class Loader():
         state_dim = model_info.get('state_dim', self.env.observation_space.shape[0])
         action_dim = model_info.get('action_dim', self.env.action_space.n)
         
-        # 학습 파라미터 (새 구조)
-        learning_params = learning_info.get('learning_params', {})
+        # 학습 파라미터
+        learning_params = model_info.get('learning_params', {})
         gamma = learning_params.get('gamma', 0.99)
         epsilon = learning_params.get('epsilon', 0.2)
         batch_size = learning_params.get('batch_size', 32)
         alpha = learning_params.get('alpha', 0.5)
         epochs = learning_params.get('epochs', 20)
+        lr_actor = learning_params.get('lr_actor', 3e-4)
+        lr_critic = learning_params.get('lr_critic', 1e-3)
+        entropy_coef = learning_params.get('entropy_coef', 0.01)
         
-        # 학습 진행 상태 (새 구조)
+        # 학습 진행 상태
         training_state = learning_info.get('training_state', {})
         current_episode = training_state.get('current_episode', 0)
         self.checkpoint_term = training_state.get('checkpoint_term', 100)
         self.num_episodes = training_state.get('total_episodes', 2000)
         remaining_episodes = self.num_episodes - current_episode
-        
-        # 옵티마이저에서 학습률 가져오기
-        optimizer_state = model_info['optimizer_state_dict']
-        lr_actor = optimizer_state['param_groups'][0]['lr']  # actor의 학습률
-        lr_critic = optimizer_state['param_groups'][-1]['lr']  # critic의 학습률
         
         # 학습 결과
         training_results = learning_info.get('training_results', {})
@@ -172,14 +170,8 @@ class Loader():
                     try:
                         new_lr_actor = float(input("새로운 Actor 학습률 (현재: 3e-4): ") or "3e-4")
                         new_lr_critic = float(input("새로운 Critic 학습률 (현재: 1e-3): ") or "1e-3")
-                        
-                        # 옵티마이저 학습률 조정
-                        for param_group in optimizer_state['param_groups']:
-                            if 'critic' in str(param_group['params']):
-                                param_group['lr'] = new_lr_critic
-                            else:
-                                param_group['lr'] = new_lr_actor
-                        
+                        lr_actor = new_lr_actor
+                        lr_critic = new_lr_critic
                         print(f"학습률이 조정되었습니다: Actor={new_lr_actor}, Critic={new_lr_critic}")
                     except ValueError:
                         print("올바른 숫자를 입력하지 않아 기본 학습률을 유지합니다.")        
@@ -212,22 +204,24 @@ class Loader():
             epsilon=epsilon,
             epochs=epochs,
             batch_size=batch_size,
-            alpha=alpha
+            alpha=alpha,
+            entropy_coef=entropy_coef
         )
 
         # 모델 가중치 로드
         ppo_agent.actor_critic.load_state_dict(model_info['actor_critic_state_dict'])
+        if 'indicator_distribution_state_dict' in model_info:
+            ppo_agent.indicator_distribution.load_state_dict(model_info['indicator_distribution_state_dict'])
         
-        # 옵티마이저 상태 로드 (새로운 학습률 적용)
+        # 옵티마이저 상태 로드
         optimizer_state = model_info['optimizer_state_dict']
         optimizer_state['param_groups'][0]['lr'] = lr_actor  # actor 학습률
         optimizer_state['param_groups'][-1]['lr'] = lr_critic  # critic 학습률
         ppo_agent.optimizer.load_state_dict(optimizer_state)
 
-
         # 모델 정보 구성
         model_info = {
-            'model_name': model_info.get('model_name', 'ppo'),
+            'model_name': model_name,
             'state_dim': state_dim,
             'action_dim': action_dim,
             'learning_params': {
@@ -238,6 +232,7 @@ class Loader():
                 'lr_critic': lr_critic,
                 'batch_size': batch_size,
                 'alpha': alpha,
+                'entropy_coef': entropy_coef,
                 'device': str(ppo_agent.device)
             }
         }

@@ -62,17 +62,17 @@ class FuturesEnv_test(gym.Env):
                
         # 레버리지에 따른 손실 제한 관련 파라미터
         self.leverage_loss_limits = {
-            8.0: 0.04,  # 2배 레버리지일 때 10%
-            4.0: 0.03,  # 1.8배 레버리지일 때 9%
-            2.0: 0.02,  # 1.6배 레버리지일 때 8%
-            1.0: 0.01,  # 1.4배 레버리지일 때 7%
+            8.0: 0.05,  # 2배 레버리지일 때 10%
+            4.0: 0.04,  # 1.8배 레버리지일 때 9%
+            2.0: 0.03,  # 1.6배 레버리지일 때 8%
+            1.0: 0.02,  # 1.4배 레버리지일 때 7%
         }
         
         self.leverage_profit_limits = {
-            8.0: 0.08,  # 2배 레버리지일 때 10%
-            4.0: 0.06,  # 1.8배 레버리지일 때 9%
-            2.0: 0.04,  # 1.6배 레버리지일 때 8%
-            1.0: 0.02,  # 1.4배 레버리지일 때 7%
+            8.0: 0.10,  # 2배 레버리지일 때 10%
+            4.0: 0.08,  # 1.8배 레버리지일 때 9%
+            2.0: 0.06,  # 1.6배 레버리지일 때 8%
+            1.0: 0.04,  # 1.4배 레버리지일 때 7%
         }
 
         # 레버리지에 따른 포지션 비중 조절 파라미터
@@ -176,7 +176,7 @@ class FuturesEnv_test(gym.Env):
             self.consecutive_wins = 0
             
             # 연속 손실에 따라 레버리지 감소
-            if self.consecutive_losses >= 1:
+            if self.consecutive_losses >= 2:
                 self.leverage = max(self.min_leverage, self.leverage - self.leverage_step)
                 self._adjust_loss_limit()  # 레버리지 변경 시 손실 한도 재조정
                 self._adjust_profit_limit()  # 레버리지 변경 시 수익 한도 재조정
