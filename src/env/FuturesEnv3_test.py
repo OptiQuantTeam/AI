@@ -14,7 +14,7 @@ BUY = 1
 SELL = -1
 HOLD = 0
 
-class FuturesEnv3(gym.Env):
+class FuturesEnv3_test(gym.Env):
     def __init__(self, path=None, logger=None):
         '''
         환경의 초기 설정값
@@ -236,12 +236,7 @@ class FuturesEnv3(gym.Env):
         '''
 
         
-        if self.recurrence % 2 == 0:
-            self.current_step = np.random.randint(36, len(self.data) - self.max_steps)
-            self.recurrence += 1
-        else:
-            self.current_step = self.tmp_current
-            self.recurrence += 1
+        self.current_step = 0
         '''
         self.current_step = self.last_step + 1
         if self.current_step >= len(self.data) - self.max_steps:
@@ -356,9 +351,6 @@ class FuturesEnv3(gym.Env):
         reward = 0
         do = 0
         
-        if self.num > 30 * 24 * 2:
-            done = True
-            
         # 포지션이 없는 경우
         if self.position is None:
             if action == LONG:
@@ -370,7 +362,6 @@ class FuturesEnv3(gym.Env):
                 self.size = available_balance * self.leverage * trade_ratio / current_price
                 entry_cost = self.size * current_price * self.trade_fee
                 self.balance -= entry_cost
-                reward = 2.0
                 do = self.position
                 self.total_trade += 1
                 self.logger.render(f"LONG 진입 - 가격: {current_price:.2f}, 크기: {self.size:.2f}, 레버리지: {self.leverage:.1f}x")
@@ -383,12 +374,11 @@ class FuturesEnv3(gym.Env):
                 self.size = available_balance * self.leverage * trade_ratio / current_price
                 entry_cost = self.size * current_price * self.trade_fee
                 self.balance -= entry_cost
-                reward = 2.0
                 do = self.position
                 self.total_trade += 1
                 self.logger.render(f"SHORT 진입 - 가격: {current_price:.2f}, 크기: {self.size:.2f}, 레버리지: {self.leverage:.1f}x")
             else:
-                reward = 0.4
+                reward = 0.5
                 
         # LONG 포지션인 경우
         elif self.position == LONG:
@@ -398,7 +388,7 @@ class FuturesEnv3(gym.Env):
                 self.balance += profit * self.size
                 exit_cost = self.size * current_price * self.trade_fee
                 self.balance -= exit_cost
-                reward = 10 if profit > 0 else -10
+                reward = 1 if profit > 0 else -1
                 if profit > 0:
                     self.success += 1
                 else:
@@ -408,10 +398,10 @@ class FuturesEnv3(gym.Env):
                 self.position = None
                 self.size = 1e-6
                 self._adjust_leverage(profit_rate)
-            elif action == FLAT or action == LONG:
+            elif action == HOLD:
                 unrealized_profit = (current_price - self.entry_price)
                 unrealized_profit_rate = unrealized_profit / self.entry_price
-                reward = -0.2
+                reward = 0.5 if unrealized_profit_rate > 0 else -0.5
                 
         
         # SHORT 포지션인 경우
@@ -422,7 +412,7 @@ class FuturesEnv3(gym.Env):
                 self.balance += profit * self.size
                 exit_cost = self.size * current_price * self.trade_fee
                 self.balance -= exit_cost
-                reward = 10 if profit > 0 else -10
+                reward = 1 if profit > 0 else -1
                 if profit > 0:
                     self.success += 1
                 else:
@@ -432,31 +422,11 @@ class FuturesEnv3(gym.Env):
                 self.position = None
                 self.size = 1e-6
                 self._adjust_leverage(profit_rate)
-            elif action == FLAT or action == SHORT:
+            elif action == HOLD:
                 unrealized_profit = (self.entry_price - current_price)
                 unrealized_profit_rate = unrealized_profit / self.entry_price
-                reward = -0.2
-        else:
-            reward = 0.2
-
-        if done:
-            if self.position != None:
-                profit = self.position * (current_price - self.entry_price)
-                profit_rate = profit / self.entry_price
-                self.balance += profit * self.size
-                exit_cost = self.size * current_price * self.trade_fee
-                self.balance -= exit_cost
-                reward = 10 if profit > 0 else -10
-
-            # 최종 수익률에 따른 보상
-            final_profit_rate = (self.balance - self.initial_balance) / self.initial_balance
-            
-            # 학습 종료 시 다음 학습 step 여부 결정
-            if final_profit_rate > 0:
-                self.success_episodes += 1
-        else:
-            self.current_step += 1
-
+                reward = 0.5 if unrealized_profit_rate > 0 else -0.5
+        
         self.balance_profit_rate = (self.balance - self.initial_balance) / self.initial_balance 
         # 히스토리 기록
         self.price_history.append(current_price)
@@ -467,6 +437,20 @@ class FuturesEnv3(gym.Env):
         self.reward_history.append(reward)
         self.profit_rate_history.append(profit_rate * 100 if 'profit_rate' in locals() else 0)
         self.step_count += 1
+
+        
+            
+        
+        if done:
+            self.last_step = self.current_step
+            # 최종 수익률에 따른 보상
+            final_profit_rate = (self.balance - self.initial_balance) / self.initial_balance
+            
+            # 학습 종료 시 다음 학습 step 여부 결정
+            if final_profit_rate > 0:
+                self.success_episodes += 1
+        else:
+            self.current_step += 1
 
         info = {
             'liquidated': self.liquidated,
@@ -492,4 +476,3 @@ class FuturesEnv3(gym.Env):
         self.logger.basic(f'Profit: {float(profit):.2f}, Profit Rate: {float(profit_rate):.2f}%')
         self.logger.basic(f'Success: {self.success}, Failure: {self.failure}')
         self.logger.basic(f'해당 에피소드 거래 횟수: {self.total_trade}, 누적 에피소드 성공 횟수: {self.success_episodes}')
-

@@ -89,7 +89,7 @@ class FuturesEnv_test(gym.Env):
         self.observation_space = spaces.Box(
             low=-np.inf, 
             high=np.inf, 
-            shape=(8,),  # 상태 공간 확장
+            shape=(11,),  # 상태 공간 확장
             dtype=np.float32
         )
         self.action_space = spaces.Discrete(3, start=-1)

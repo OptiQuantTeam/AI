@@ -679,7 +679,7 @@ class Loader():
     def test(self):
         # Agent 테스트 모드 전환
         self.agent.test_mode = True
-        self.agent.alpha = 1
+        self.agent.alpha = 0.3
         self.logger.setTestLevel()
         
         try:
@@ -725,7 +725,11 @@ class Loader():
                     'short_positions': sum(1 for action in actions if action == -1),
                     'neutral_positions': sum(1 for action in actions if action == 0),
                     'consecutive_wins': self._calculate_consecutive_wins(balance_history),
-                    'consecutive_losses': self._calculate_consecutive_losses(balance_history)
+                    'consecutive_losses': self._calculate_consecutive_losses(balance_history),
+                    'average_profit_rate': np.mean([p for p in self.test_env.profit_rate_history if p != 0]) if self.test_env.profit_rate_history else 0,
+                    'max_profit_rate': max(self.test_env.profit_rate_history) if self.test_env.profit_rate_history else 0,
+                    'average_profit': np.mean([p for p in self.test_env.profit_history if p != 0]) if self.test_env.profit_history else 0,
+                    'max_profit': max(self.test_env.profit_history) if self.test_env.profit_history else 0
                 }
             }
 
@@ -787,7 +791,11 @@ class Loader():
                         'short_positions': sum(1 for action in actions if action == -1),
                         'neutral_positions': sum(1 for action in actions if action == 0),
                         'consecutive_wins': self._calculate_consecutive_wins(balance_history),
-                        'consecutive_losses': self._calculate_consecutive_losses(balance_history)
+                        'consecutive_losses': self._calculate_consecutive_losses(balance_history),
+                        'average_profit_rate': np.mean([p for p in self.test_env.profit_rate_history if p != 0]) if self.test_env.profit_rate_history else 0,
+                        'max_profit_rate': max(self.test_env.profit_rate_history) if self.test_env.profit_rate_history else 0,
+                        'average_profit': np.mean([p for p in self.test_env.profit_history if p != 0]) if self.test_env.profit_history else 0,
+                        'max_profit': max(self.test_env.profit_history) if self.test_env.profit_history else 0
                     },
     
                     # 환경 정보
@@ -834,14 +842,14 @@ class Loader():
         return True
     
     def _calculate_consecutive_wins(self, balance_history):
-        if len(balance_history) < 2:
+        if not self.test_env.profit_history:
             return 0
             
         max_consecutive = 0
         current_consecutive = 0
         
-        for i in range(1, len(balance_history)):
-            if balance_history[i] > balance_history[i-1]:
+        for profit in self.test_env.profit_history:
+            if profit > 0:  # 수익이 발생한 경우
                 current_consecutive += 1
                 max_consecutive = max(max_consecutive, current_consecutive)
             else:
@@ -850,14 +858,14 @@ class Loader():
         return max_consecutive
         
     def _calculate_consecutive_losses(self, balance_history):
-        if len(balance_history) < 2:
+        if not self.test_env.profit_history:
             return 0
             
         max_consecutive = 0
         current_consecutive = 0
         
-        for i in range(1, len(balance_history)):
-            if balance_history[i] < balance_history[i-1]:
+        for profit in self.test_env.profit_history:
+            if profit < 0:  # 손실이 발생한 경우
                 current_consecutive += 1
                 max_consecutive = max(max_consecutive, current_consecutive)
             else:

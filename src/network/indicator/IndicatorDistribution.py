@@ -41,7 +41,7 @@ class IndicatorDistribution(nn.Module):
         batch_size = state.shape[0]
         
         # 1) 기본 확률 정의 - 더 균형잡힌 분포로 수정
-        default_probs = torch.tensor([0.33, 0.34, 0.33], device=state.device)  # SHORT, HOLD, LONG
+        default_probs = torch.tensor([0.4, 0.2, 0.4], device=state.device)  # SHORT, HOLD, LONG
         default_logits = default_probs.unsqueeze(0).expand(batch_size, -1)
         
         # 2) 하이킨 아시 캔들 분석 - 추세 추종 강화
@@ -173,7 +173,8 @@ class IndicatorDistribution(nn.Module):
         
         # 8) 최종 확률 분포 계산
         mixed_logits = default_logits + combined_signal
-        final_probs = F.softmax(mixed_logits, dim=-1)
+        final_probs = F.softmax(mixed_logits / 0.5, dim=-1)
+        
         
         return final_probs
         
