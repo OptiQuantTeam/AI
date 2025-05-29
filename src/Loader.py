@@ -679,7 +679,7 @@ class Loader():
     def test(self):
         # Agent 테스트 모드 전환
         self.agent.test_mode = True
-        self.agent.alpha = 1
+        self.agent.alpha = 0.5  # 1에서 0.5로 변경하여 지표와 액션 확률을 동일한 비중으로 사용
         self.logger.setTestLevel()
         
         try:

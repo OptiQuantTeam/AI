@@ -53,7 +53,6 @@ class IndicatorDistribution(nn.Module):
         ha_lower_wick = state[:, 5]  # ha_lower_wick
         ha_upper_wick = state[:, 6]  # ha_upper_wick
         
-        
         # 현재와 이전 캔들의 관계
         high_diff = state[:, 8]
         low_diff = state[:, 9]
@@ -66,48 +65,25 @@ class IndicatorDistribution(nn.Module):
         has_small_lower_wick = ha_lower_wick < 1e-6  # 작은 아래꼬리
         has_small_upper_wick = ha_upper_wick < 1e-6  # 작은 위꼬리
         
-        # 하이킨 아시 ATR 계산
-        ha_tr = torch.max(
-            ha_high - ha_low,  # 캔들 전체 범위
-            torch.max(
-                torch.abs(ha_high - ha_close),  # 위꼬리
-                torch.abs(ha_low - ha_close)    # 아래꼬리
-            )
-        )
-        
-        # 변동성 상태 정의
-        high_volatility = ha_tr > 0.02  # 높은 변동성
-        extreme_volatility = ha_tr > 0.03  # 극단적 변동성
-        
         # 연속 캔들 패턴 확인 (추세 강화)
         trend_bullish = torch.logical_and(is_bullish, body_diff > 0)  # 상승 추세
         trend_bearish = torch.logical_and(is_bearish, body_diff < 0)  # 하락 추세
         
         ha_signal_tensor = torch.zeros((batch_size, self.action_dim), device=state.device)
         
-        # 강한 상승 신호 - 추세 추종 강화 (변동성 고려)
+        # 강한 상승 신호 - 추세 추종 강화
         strong_bullish = torch.logical_and(
             torch.logical_and(trend_bullish, body_size > 0.5),
-            torch.logical_and(
-                torch.logical_and(high_diff > 0, low_diff > 0),  # 고가와 저가 모두 상승
-                torch.logical_not(high_volatility)  # 변동성이 높지 않을 때만
-            )
+            torch.logical_and(high_diff > 0, low_diff > 0)  # 고가와 저가 모두 상승
         )
         ha_signal_tensor[strong_bullish, 2] = 0.7  # LONG 가중치 조정
         
-        # 강한 하락 신호 - 추세 추종 강화 (변동성 고려)
+        # 강한 하락 신호 - 추세 추종 강화
         strong_bearish = torch.logical_and(
             torch.logical_and(trend_bearish, body_size > 0.5),
-            torch.logical_and(
-                torch.logical_and(high_diff < 0, low_diff < 0),  # 고가와 저가 모두 하락
-                torch.logical_not(high_volatility)  # 변동성이 높지 않을 때만
-            )
+            torch.logical_and(high_diff < 0, low_diff < 0)  # 고가와 저가 모두 하락
         )
         ha_signal_tensor[strong_bearish, 0] = 0.7  # SHORT 가중치 조정
-        
-        # 변동성에 따른 HOLD 가중치
-        ha_signal_tensor[high_volatility, 1] = 0.6  # 높은 변동성 -> HOLD
-        ha_signal_tensor[extreme_volatility, 1] = 0.8  # 극단적 변동성 -> HOLD
         
         # 3) 200 MA 분석 - 추세 추종 강화
         ma_200 = state[:, 11]        # ma_200
@@ -162,10 +138,9 @@ class IndicatorDistribution(nn.Module):
         # 6) 통합 신호 생성 - 추세 추종 강화
         ha_ma_stoch_bb_signal = torch.zeros((batch_size, self.action_dim), device=state.device)
         
-        # 롱 진입 신호 - 변동성 고려
+        # 롱 진입 신호
         long_signal = (
             (torch.logical_and(ha_signal_tensor[:, 2] > 0, ma_slope > 0)) &  # 하이킨 아시 + 상승 추세
-            torch.logical_not(high_volatility) &  # 변동성이 높지 않을 때만
             (
                 (torch.logical_and(ma_200_signal > 0.1, stoch_signal < -0.1)) |  # MA + RSI
                 (torch.logical_and(ma_200_signal > 0.1, price_position < 0.2)) |  # MA + BB
@@ -173,10 +148,9 @@ class IndicatorDistribution(nn.Module):
             )
         )
         
-        # 숏 진입 신호 - 변동성 고려
+        # 숏 진입 신호
         short_signal = (
             (torch.logical_and(ha_signal_tensor[:, 0] > 0, ma_slope < 0)) &  # 하이킨 아시 + 하락 추세
-            torch.logical_not(high_volatility) &  # 변동성이 높지 않을 때만
             (
                 (torch.logical_and(ma_200_signal < -0.1, stoch_signal > 0.1)) |  # MA + RSI
                 (torch.logical_and(ma_200_signal < -0.1, price_position > 0.8)) |  # MA + BB
@@ -184,16 +158,8 @@ class IndicatorDistribution(nn.Module):
             )
         )
         
-        # 변동성에 따른 가중치 조정
-        volatility_weight = torch.ones_like(ha_ma_stoch_bb_signal)
-        volatility_weight[high_volatility] = 0.5  # 높은 변동성에서는 가중치 감소
-        volatility_weight[extreme_volatility] = 0.3  # 극단적 변동성에서는 가중치 더 감소
-        
-        ha_ma_stoch_bb_signal[long_signal, 2] = 0.8 * volatility_weight[long_signal, 2]  # LONG 가중치
-        ha_ma_stoch_bb_signal[short_signal, 0] = 0.8 * volatility_weight[short_signal, 0]  # SHORT 가중치
-        
-        # 극단적 변동성에서는 HOLD 가중치 증가
-        ha_ma_stoch_bb_signal[extreme_volatility, 1] = 0.9  # 극단적 변동성 -> HOLD
+        ha_ma_stoch_bb_signal[long_signal, 2] = 0.8  # LONG 가중치
+        ha_ma_stoch_bb_signal[short_signal, 0] = 0.8  # SHORT 가중치
         
         # 7) 모든 신호 통합 - 가중치 조정
         combined_signal = (
