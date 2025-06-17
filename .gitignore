@@ -1,0 +1,14 @@
+*.csv
+__pycache__
+*.pt
+.env
+models/*
+json/*
+*.png
+*.log*
+tmp/*
+tmp_src/*
+*/__pycache__
+output/*
+checkpoints/*
+saved_model/*
